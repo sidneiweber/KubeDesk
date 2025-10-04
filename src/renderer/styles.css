@@ -208,6 +208,9 @@ body {
     display: flex;
     flex-direction: column;
     background-color: #1a1a1a;
+    overflow: hidden;
+    position: relative;
+    height: 100vh;
 }
 
 /* Telas */
@@ -688,6 +691,9 @@ body {
     padding: 30px;
     max-width: 100%;
     min-width: 0;
+    position: relative;
+    width: 100%;
+    height: 100%;
 }
 
 /* Loading e erro */
@@ -742,10 +748,16 @@ body {
 /* Seções de conteúdo */
 .content-section {
     display: none;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    flex: 1;
+    min-height: 0;
 }
 
 .content-section.active {
-    display: block;
+    display: flex;
+    flex-direction: column;
 }
 
 .section-header {
@@ -780,11 +792,26 @@ body {
     border-radius: 8px;
     border: 1px solid #404040;
     overflow: hidden;
+    max-height: calc(100vh - 250px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .pods-table, .namespaces-table {
     width: 100%;
     border-collapse: collapse;
+    display: table;
+}
+
+.pods-table thead, .namespaces-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.pods-table tbody, .namespaces-table tbody {
+    display: table-row-group;
 }
 
 .pods-table th, .namespaces-table th {
@@ -1590,26 +1617,11 @@ body {
 
 .terminal-search-btn:hover {
     background: #1177bb;
-}/* Fix
- for infinite movement issue */
-.main-content {
-    overflow: hidden;
-    position: relative;
 }
 
-.dashboard-content {
-    overflow: hidden;
-    position: relative;
-    width: 100%;
-    height: 100%;
-}
 
-.content-section {
-    overflow: hidden;
-    position: relative;
-    width: 100%;
-    height: 100%;
-}
+
+
 
 /* Prevent xterm from causing layout shifts */
 .xterm-helper-textarea {
@@ -1619,18 +1631,11 @@ body {
 }
 
 /* Ensure stable layout for logs section */
-#podLogsSection.active {
-    display: flex;
-    flex-direction: column;
-}
-
 #podLogsSection .section-header {
     flex-shrink: 0;
 }
 
 #podLogsSection .logs-container {
-    flex: 1;
-    min-height: 0;
     overflow: hidden;
 }
 
@@ -1640,4 +1645,268 @@ body {
     z-index: 1000 !important;
     right: 0 !important;
     top: 100% !important;
+}
+
+/* Auto-refresh button styles */
+.btn-secondary {
+    padding: 8px 12px;
+    background-color: #404040;
+    border: 1px solid #555;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-secondary:hover {
+    background-color: #4a9eff;
+    border-color: #4a9eff;
+}
+
+.btn-secondary:disabled {
+    background-color: #2a2a2a;
+    color: #666;
+    cursor: not-allowed;
+    border-color: #333;
+}
+
+#autoRefreshBtn {
+    position: relative;
+}
+
+#autoRefreshBtn.auto-refresh-enabled {
+    background-color: #16825d;
+    border-color: #16825d;
+}
+
+#autoRefreshBtn.auto-refresh-enabled:hover {
+    background-color: #1a9870;
+    border-color: #1a9870;
+}
+
+#autoRefreshBtn.auto-refresh-disabled {
+    background-color: #404040;
+    border-color: #555;
+}
+
+#autoRefreshBtn.auto-refresh-disabled:hover {
+    background-color: #4a9eff;
+    border-color: #4a9eff;
+}
+
+.auto-refresh-icon {
+    font-size: 1rem;
+}
+
+/* Indicador visual de auto-refresh ativo */
+#autoRefreshBtn.auto-refresh-enabled::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    background-color: #22c55e;
+    border-radius: 50%;
+    border: 2px solid #1a1a1a;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+    }
+}/* T
+oast notification styles */
+.toast-notification {
+    position: fixed;
+    top: 80px;
+    right: 30px;
+    background-color: #2d2d2d;
+    color: #ffffff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 1px solid #404040;
+    z-index: 10000;
+    font-size: 0.9rem;
+    font-weight: 500;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    transform: translateX(calc(100% + 30px));
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    max-width: 300px;
+    word-wrap: break-word;
+    pointer-events: none;
+}
+
+.toast-notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.toast-notification::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(to bottom, #4a9eff, #16825d);
+    border-radius: 8px 0 0 8px;
+}
+
+/* Toast variants for different message types */
+.toast-notification.success::before {
+    background: linear-gradient(to bottom, #16825d, #22c55e);
+}
+
+.toast-notification.error::before {
+    background: linear-gradient(to bottom, #ef4444, #dc2626);
+}
+
+.toast-notification.warning::before {
+    background: linear-gradient(to bottom, #f59e0b, #d97706);
+}
+
+.toast-notification.info::before {
+    background: linear-gradient(to bottom, #4a9eff, #3b82f6);
+}
+
+/* Hide dashboard header in logs section */
+.dashboard-header {
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.dashboard-header.hidden {
+    height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    opacity: 0;
+    transform: translateY(-100%);
+}
+
+/* Adjust main content layout when header is hidden */
+.main-content {
+    transition: all 0.3s ease;
+}
+
+/* Ensure logs section takes full available height when active */
+#podLogsSection.active {
+    display: flex !important;
+    flex-direction: column;
+    height: 100%;
+}
+
+#podLogsSection .logs-container {
+    flex: 1;
+    min-height: 0;
+}
+
+/* When header is hidden, logs section gets more space */
+.dashboard-header.hidden ~ .dashboard-content {
+    flex: 1;
+    padding-top: 20px;
+}
+
+.dashboard-header.hidden ~ .dashboard-content #podLogsSection {
+    height: calc(100vh - 40px);
+}/* Pod
+s section specific styles */
+#podsSection {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+#podsSection .section-header {
+    flex-shrink: 0;
+}
+
+#podsSection .table-container {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Ensure proper scrolling for pods table */
+.pods-table-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 100%;
+}
+
+/* Custom scrollbar for tables */
+.table-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: #2d2d2d;
+    border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+/* Responsive table adjustments */
+@media (max-height: 600px) {
+    .table-container {
+        max-height: calc(100vh - 200px);
+    }
+}
+
+@media (max-height: 500px) {
+    .table-container {
+        max-height: calc(100vh - 150px);
+    }
+}/* Dashboard
+ screen layout */
+#dashboardScreen {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#dashboardScreen.active {
+    display: flex !important;
+}
+
+/* Ensure proper height calculation for different screen sizes */
+@media (max-height: 768px) {
+    .table-container {
+        max-height: calc(100vh - 180px);
+    }
+    
+    .dashboard-content {
+        padding: 20px;
+    }
+}
+
+@media (max-height: 600px) {
+    .table-container {
+        max-height: calc(100vh - 160px);
+    }
+    
+    .dashboard-content {
+        padding: 15px;
+    }
 }
