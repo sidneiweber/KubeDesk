@@ -1,0 +1,27 @@
+/* Import xterm.js CSS */
+@import '../../node_modules/@xterm/xterm/css/xterm.css';
+
+/* Custom xterm overrides */
+.xterm {
+    padding: 8px;
+}
+
+.xterm .xterm-viewport {
+    background-color: #1e1e1e !important;
+}
+
+.xterm .xterm-screen {
+    background-color: #1e1e1e !important;
+}
+
+.xterm .xterm-cursor {
+    background-color: #ffffff !important;
+}
+
+.xterm .xterm-selection {
+    background-color: #264f78 !important;
+}
+
+.xterm .xterm-rows {
+    font-family: 'Consolas', 'Courier New', monospace !important;
+}

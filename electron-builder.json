@@ -1,0 +1,54 @@
+{
+  "appId": "com.kubedesk.app",
+  "productName": "KubeDesk",
+  "directories": {
+    "output": "dist",
+    "buildResources": "assets"
+  },
+  "files": [
+    "src/**/*",
+    "assets/**/*",
+    "package.json"
+  ],
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "assets/icon.icns"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64", "ia32"]
+      }
+    ],
+    "icon": "assets/icon.ico"
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64"]
+      },
+      {
+        "target": "rpm",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/icon.png",
+    "category": "Development"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}

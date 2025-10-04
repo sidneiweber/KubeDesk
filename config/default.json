@@ -1,0 +1,32 @@
+{
+  "window": {
+    "width": 1400,
+    "height": 900,
+    "minWidth": 800,
+    "minHeight": 600,
+    "titleBarStyle": "default",
+    "webPreferences": {
+      "nodeIntegration": true,
+      "contextIsolation": false,
+      "enableRemoteModule": true
+    }
+  },
+  "kubeconfig": {
+    "defaultPath": "~/.kube/config",
+    "autoLoad": true,
+    "watchForChanges": true
+  },
+  "ui": {
+    "theme": "dark",
+    "refreshInterval": 30000,
+    "autoRefresh": false,
+    "showMetrics": true
+  },
+  "features": {
+    "multiCluster": true,
+    "logViewer": true,
+    "resourceEditor": false,
+    "portForwarding": false,
+    "metrics": false
+  }
+}

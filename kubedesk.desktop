@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=KubeDesk
+Comment=Ferramenta para gerenciar clusters Kubernetes
+Exec=/opt/kubedesk/dist/linux-unpacked/kubedesk
+Icon=/opt/kubedesk/assets/icon-square.png
+Terminal=false
+Categories=Development;System;
+StartupWMClass=kubedesk
+StartupNotify=true
+MimeType=application/x-kubedesk

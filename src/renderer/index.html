@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KubeDesk</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="xterm.css">
+</head>
+<body>
+    <!-- Loading/Setup Screen -->
+    <div id="setupScreen" class="screen active">
+        <div class="setup-container">
+            <div class="setup-header">
+                <div class="logo">
+                    <img src="../../assets/icon.png" alt="KubeDesk Logo" class="logo-icon">
+                    <h1>KubeDesk</h1>
+                </div>
+                <p class="setup-subtitle">Conecte-se aos seus clusters Kubernetes</p>
+            </div>
+
+            <div class="setup-content">
+                <div class="config-card">
+                    <h2>Configuração do Cluster</h2>
+                    <p>Selecione seu arquivo kubeconfig para começar</p>
+                    
+                    <div class="config-form">
+                        <div class="config-input">
+                            <label for="kubeconfigPath">Arquivo Kubeconfig:</label>
+                            <div class="path-input-group">
+                                <input type="text" id="kubeconfigPath" placeholder="Caminho para kubeconfig" readonly>
+                                <button id="selectConfigBtn" class="btn-secondary">Selecionar</button>
+                            </div>
+                        </div>
+                        
+                        <div class="cluster-selection">
+                            <label for="clusterSelect">Cluster:</label>
+                            <select id="clusterSelect" disabled>
+                                <option value="">Selecione um cluster</option>
+                            </select>
+                        </div>
+
+                        <div class="setup-actions">
+                            <button id="connectBtn" class="btn-primary" disabled>
+                                <span class="btn-icon">🔗</span>
+                                Conectar ao Cluster
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setup-info">
+                    <h3>Como funciona:</h3>
+                    <div class="info-steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h4>Selecione o Kubeconfig</h4>
+                                <p>Escolha o arquivo de configuração do seu cluster</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h4>Escolha o Cluster</h4>
+                                <p>Selecione qual cluster deseja conectar</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h4>Conecte e Explore</h4>
+                                <p>Visualize e gerencie seus recursos Kubernetes</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-footer">
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-indicator disconnected"></span>
+                    <span>Pronto para conectar</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>KubeDesk</h2>
+                <div class="connection-status" id="mainConnectionStatus">
+                    <span class="status-indicator disconnected"></span>
+                    <span>Desconectado</span>
+                </div>
+            </div>
+
+            <div class="sidebar-content">
+                <div class="navigation" id="navigation">
+                    <h3>Navegação</h3>
+                    <ul class="nav-menu">
+                        <li><a href="#" data-section="pods" class="nav-link active">Pods</a></li>
+                        <li><a href="#" data-section="deployments" class="nav-link">Deployments</a></li>
+                        <li><a href="#" data-section="services" class="nav-link">Services</a></li>
+                        <li><a href="#" data-section="namespaces" class="nav-link">Namespaces</a></li>
+                    </ul>
+                </div>
+
+                <div class="cluster-info" id="clusterInfo">
+                    <h3>Cluster Atual</h3>
+                    <div class="cluster-details">
+                        <div class="cluster-name" id="currentClusterName">-</div>
+                        <div class="cluster-namespace" id="currentClusterNamespace">-</div>
+                    </div>
+                    <button id="reconnectBtn" class="btn-secondary">
+                        <span class="btn-icon">🔄</span>
+                        Reconectar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+
+            <!-- Main Dashboard -->
+            <div id="dashboardScreen" class="screen">
+                <div class="dashboard-header">
+                    <div class="breadcrumb">
+                        <span id="currentContext"></span>
+                        <span class="separator">></span>
+                        <span id="currentSection">Pods</span>
+                    </div>
+                    
+                    <div class="dashboard-controls">
+                        <div class="namespace-selector">
+                            <label for="namespaceSelect">Namespace:</label>
+                            <select id="namespaceSelect">
+                                <option value="all">Todos os namespaces</option>
+                            </select>
+                        </div>
+                        
+                        <div class="search-box">
+                            <input type="text" id="searchInput" placeholder="Buscar pods...">
+                        </div>
+                        
+                        <button id="refreshBtn" class="btn-secondary">
+                            <span class="refresh-icon">🔄</span>
+                            Atualizar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="dashboard-content">
+                    <!-- Loading indicator -->
+                    <div id="loadingIndicator" class="loading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Carregando...</p>
+                    </div>
+
+                    <!-- Error message -->
+                    <div id="errorMessage" class="error-message" style="display: none;">
+                        <div class="error-icon">⚠️</div>
+                        <div class="error-content">
+                            <h3>Erro</h3>
+                            <p id="errorText"></p>
+                        </div>
+                    </div>
+
+                    <!-- Pods Table -->
+                    <div id="podsSection" class="content-section active">
+                        <div class="section-header">
+                            <h2>Pods</h2>
+                            <div class="section-stats">
+                                <span id="podsCount">0 pods</span>
+                            </div>
+                        </div>
+                        
+                        <div class="table-container">
+                            <table class="pods-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Ready</th>
+                                        <th>Restarts</th>
+                                        <th>Age</th>
+                                        <th>Node</th>
+                                        <th>IP</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="podsTableBody">
+                                    <!-- Pods will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Deployments Section -->
+                    <div id="deploymentsSection" class="content-section">
+                        <div class="section-header">
+                            <h2>Deployments</h2>
+                            <div class="section-stats">
+                                <span id="deploymentsCount">0 deployments</span>
+                            </div>
+                        </div>
+                        <div class="placeholder">
+                            <p>Seção de Deployments em desenvolvimento</p>
+                        </div>
+                    </div>
+
+                    <!-- Services Section -->
+                    <div id="servicesSection" class="content-section">
+                        <div class="section-header">
+                            <h2>Services</h2>
+                            <div class="section-stats">
+                                <span id="servicesCount">0 services</span>
+                            </div>
+                        </div>
+                        <div class="placeholder">
+                            <p>Seção de Services em desenvolvimento</p>
+                        </div>
+                    </div>
+
+                    <!-- Namespaces Section -->
+                    <div id="namespacesSection" class="content-section">
+                        <div class="section-header">
+                            <h2>Namespaces</h2>
+                            <div class="section-stats">
+                                <span id="namespacesCount">0 namespaces</span>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table class="namespaces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Status</th>
+                                        <th>Age</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="namespacesTableBody">
+                                    <!-- Namespaces will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Pod Logs Section -->
+                    <div id="podLogsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="logs-header-left">
+                                <button id="backToPodsBtn" class="btn-secondary">
+                                    <span class="btn-icon">←</span>
+                                    Voltar aos Pods
+                                </button>
+                                <h3 id="podLogsTitle">Logs do Pod</h3>
+                            </div>
+                            <div class="logs-header-right">
+                                <div class="logs-controls">
+                                    <div class="container-selector">
+                                        <label for="containerSelect">Container:</label>
+                                        <select id="containerSelect">
+                                            <option value="">Todos os containers</option>
+                                        </select>
+                                    </div>
+                                    <div class="logs-options">
+                                        <button id="logsOptionsBtn" class="btn-secondary">
+                                            <span class="btn-icon">⚙️</span>
+                                            Opções
+                                        </button>
+                                        <div id="logsOptionsMenu" class="dropdown-menu" style="display: none;">
+                                            <div class="dropdown-section">
+                                                <h4>Opções de Exibição</h4>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="lineWrapCheckbox" checked>
+                                                    Quebra de linha
+                                                </label>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="horizontalScrollCheckbox">
+                                                    Scroll horizontal
+                                                </label>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="logColoringCheckbox" checked>
+                                                    Cores nos logs
+                                                </label>
+                                            </div>
+                                            <div class="dropdown-section">
+                                                <h4>Timestamp</h4>
+                                                <label class="radio-label">
+                                                    <input type="radio" name="timestamp" value="off" checked>
+                                                    Desabilitado
+                                                </label>
+                                                <label class="radio-label">
+                                                    <input type="radio" name="timestamp" value="utc">
+                                                    UTC
+                                                </label>
+                                                <label class="radio-label">
+                                                    <input type="radio" name="timestamp" value="local">
+                                                    Local
+                                                </label>
+                                            </div>
+                                            <div class="dropdown-section">
+                                                <h4>Exportar</h4>
+                                                <button id="downloadCsvBtn" class="dropdown-btn">Baixar como CSV</button>
+                                                <button id="downloadTextBtn" class="dropdown-btn">Baixar como Texto</button>
+                                                <button id="copyCsvBtn" class="dropdown-btn">Copiar como CSV</button>
+                                                <button id="copyTextBtn" class="dropdown-btn">Copiar como Texto</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="logs-container">
+                            <div class="logs-toolbar">
+                                <div class="logs-search-box">
+                                    <input type="text" id="terminalSearchInput" placeholder="Buscar nos logs..." />
+                                    <button id="searchPrevBtn" title="Anterior">↑</button>
+                                    <button id="searchNextBtn" title="Próximo">↓</button>
+                                </div>
+                                <button id="followLogsBtn" class="logs-follow-btn following">
+                                    <span>📍</span>
+                                    Seguir
+                                </button>
+                                <div class="logs-stats">
+                                    <span id="logsCount">0 logs</span>
+                                    <span id="logsRate">0/s</span>
+                                </div>
+                            </div>
+                            <div id="logsContent" class="logs-content">
+                                <!-- Terminal will be initialized here -->
+                            </div>
+                            <div class="logs-footer">
+                                <div class="logs-actions">
+                                    <button id="pauseLogsBtn" class="btn-secondary">
+                                        <span class="btn-icon">⏸️</span>
+                                        Pausar
+                                    </button>
+                                    <button id="clearLogsBtn" class="btn-secondary">
+                                        <span class="btn-icon">🗑️</span>
+                                        Limpar
+                                    </button>
+                                    <button id="scrollTopBtn" class="btn-secondary">
+                                        <span class="btn-icon">⬆️</span>
+                                        Topo
+                                    </button>
+                                    <button id="scrollBottomBtn" class="btn-secondary">
+                                        <span class="btn-icon">⬇️</span>
+                                        Final
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
