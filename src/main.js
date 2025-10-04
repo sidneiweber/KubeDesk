@@ -44,7 +44,7 @@ app.whenReady().then(() => {
   if (process.platform === 'linux') {
     app.setAppUserModelId('kubernetes-tool');
   }
-  
+
   createWindow();
 });
 
@@ -71,7 +71,7 @@ ipcMain.handle('load-kubeconfig', async (event, configPath) => {
   try {
     const configContent = fs.readFileSync(configPath, 'utf8');
     const kubeConfig = yaml.load(configContent);
-    
+
     // Extrair informações dos clusters
     const clusters = kubeConfig.clusters.map((cluster, index) => ({
       name: cluster.name,
@@ -147,10 +147,10 @@ ipcMain.handle('get-pods', async (event, connectionId, namespace = 'default') =>
     if (!kc) {
       throw new Error('Conexão não encontrada');
     }
-    
+
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
     let response;
-    
+
     if (namespace === 'all') {
       // Listar pods de todos os namespaces
       response = await k8sApi.listPodForAllNamespaces();
@@ -158,7 +158,7 @@ ipcMain.handle('get-pods', async (event, connectionId, namespace = 'default') =>
       // Listar pods de um namespace específico
       response = await k8sApi.listNamespacedPod(namespace);
     }
-    
+
     const pods = response.body.items.map(pod => ({
       name: pod.metadata.name,
       namespace: pod.metadata.namespace,
@@ -182,43 +182,43 @@ ipcMain.handle('get-pods', async (event, connectionId, namespace = 'default') =>
 });
 
 ipcMain.handle('get-services', async (event, connectionId, namespace = 'default') => {
-    try {
-        const kc = activeConfigs.get(connectionId);
-        if (!kc) {
-            throw new Error('Conexão não encontrada');
-        }
-
-        const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-        let response;
-
-        if (namespace === 'all') {
-            // Listar services de todos os namespaces
-            response = await k8sApi.listServiceForAllNamespaces();
-        } else {
-            // Listar services de um namespace específico
-            response = await k8sApi.listNamespacedService(namespace);
-        }
-
-        const service = response.body.items.map(pod => ({
-            service: service.metadata.name,
-            // namespace: pod.metadata.namespace,
-            // status: pod.status.phase,
-            // ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
-            // restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
-            // age: calculateAge(pod.metadata.creationTimestamp),
-            // node: pod.spec.nodeName,
-            // ip: pod.status.podIP,
-            // containers: pod.spec.containers.map(container => ({
-            //     name: container.name,
-            //     image: container.image,
-            //     resources: container.resources
-            // }))
-        }));
-
-        return services;
-    } catch (error) {
-        throw new Error(`Erro ao buscar services: ${error.message}`);
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
     }
+
+    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+    let response;
+
+    if (namespace === 'all') {
+      // Listar services de todos os namespaces
+      response = await k8sApi.listServiceForAllNamespaces();
+    } else {
+      // Listar services de um namespace específico
+      response = await k8sApi.listNamespacedService(namespace);
+    }
+
+    const service = response.body.items.map(pod => ({
+      service: service.metadata.name,
+      // namespace: pod.metadata.namespace,
+      // status: pod.status.phase,
+      // ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
+      // restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
+      // age: calculateAge(pod.metadata.creationTimestamp),
+      // node: pod.spec.nodeName,
+      // ip: pod.status.podIP,
+      // containers: pod.spec.containers.map(container => ({
+      //     name: container.name,
+      //     image: container.image,
+      //     resources: container.resources
+      // }))
+    }));
+
+    return services;
+  } catch (error) {
+    throw new Error(`Erro ao buscar services: ${error.message}`);
+  }
 });
 
 ipcMain.handle('get-namespaces', async (event, connectionId) => {
@@ -227,7 +227,7 @@ ipcMain.handle('get-namespaces', async (event, connectionId) => {
     if (!kc) {
       throw new Error('Conexão não encontrada');
     }
-    
+
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
     const response = await k8sApi.listNamespace();
     const namespaces = response.body.items.map(ns => ({
@@ -248,9 +248,9 @@ ipcMain.handle('get-pod-logs', async (event, connectionId, podName, namespace, c
     if (!kc) {
       throw new Error('Conexão não encontrada');
     }
-    
+
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-  
+
     // Tentar diferentes configurações até encontrar uma que funcione
     const configs = [
       // Configuração 1: Com timestamps e sinceSeconds (prioridade alta)
@@ -274,10 +274,10 @@ ipcMain.handle('get-pod-logs', async (event, connectionId, podName, namespace, c
         params: [podName, namespace, containerName]
       }
     ];
-    
+
     let response = null;
     let lastError = null;
-    
+
     for (const config of configs) {
       try {
         console.log(`Tentando configuração: ${config.name}`);
@@ -290,24 +290,24 @@ ipcMain.handle('get-pod-logs', async (event, connectionId, podName, namespace, c
         continue;
       }
     }
-    
+
     if (!response) {
       throw lastError || new Error('Todas as configurações falharam');
     }
-    
+
     console.log(`Logs recebidos: ${response.body ? response.body.length : 0} caracteres`);
-    
+
     // Debug: mostrar parte do conteúdo bruto
     if (response.body) {
       const preview = response.body.substring(0, 500);
       console.log('Preview do conteúdo bruto:', JSON.stringify(preview));
     }
-    
+
     // Parsear logs em formato estruturado
     const logs = parseLogs(response.body, podName);
-    
+
     console.log(`Logs parseados: ${logs.length} entradas`);
-    
+
     // Debug: mostrar alguns logs parseados
     if (logs.length > 0) {
       console.log('Primeiros 3 logs parseados:');
@@ -320,7 +320,7 @@ ipcMain.handle('get-pod-logs', async (event, connectionId, podName, namespace, c
         });
       });
     }
-    
+
     return logs;
   } catch (error) {
     console.error('Erro detalhado ao buscar logs:', {
@@ -363,13 +363,13 @@ ipcMain.handle('stream-pod-logs', async (event, connectionId, podName, namespace
     });
 
     logStream.on('error', (err) => {
-        event.sender.send('log-stream-error', { streamId, message: `Erro no stream de logs: ${err.message}` });
-        activeLogStreams.delete(streamId);
+      event.sender.send('log-stream-error', { streamId, message: `Erro no stream de logs: ${err.message}` });
+      activeLogStreams.delete(streamId);
     });
-    
+
     logStream.on('end', () => {
-        event.sender.send('log-stream-end', { streamId });
-        activeLogStreams.delete(streamId);
+      event.sender.send('log-stream-end', { streamId });
+      activeLogStreams.delete(streamId);
     });
 
     const reqPromise = log.log(namespace, podName, containerName, logStream, {
@@ -394,12 +394,12 @@ ipcMain.handle('stream-pod-logs', async (event, connectionId, podName, namespace
 });
 
 ipcMain.on('stop-stream-pod-logs', (event, streamId) => {
-    if (activeLogStreams.has(streamId)) {
-        const req = activeLogStreams.get(streamId);
-        if (req && typeof req.abort === 'function') {
-            req.abort();
-        }
+  if (activeLogStreams.has(streamId)) {
+    const req = activeLogStreams.get(streamId);
+    if (req && typeof req.abort === 'function') {
+      req.abort();
     }
+  }
 });
 
 ipcMain.handle('get-pod-containers', async (event, connectionId, podName, namespace) => {
@@ -408,16 +408,16 @@ ipcMain.handle('get-pod-containers', async (event, connectionId, podName, namesp
     if (!kc) {
       throw new Error('Conexão não encontrada');
     }
-    
+
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
     const response = await k8sApi.readNamespacedPod(podName, namespace);
-    
+
     const containers = response.body.spec.containers.map(container => ({
       name: container.name,
       image: container.image,
       ready: response.body.status.containerStatuses?.find(cs => cs.name === container.name)?.ready || false
     }));
-    
+
     return containers;
   } catch (error) {
     throw new Error(`Erro ao buscar containers do pod: ${error.message}`);
@@ -466,18 +466,18 @@ function parseLogs(logContent, podName) {
     console.log('Conteúdo de logs vazio ou nulo');
     return [];
   }
-  
+
   const lines = logContent.split('\n').filter(line => line.trim());
   console.log(`Processando ${lines.length} linhas de log`);
-  
+
   // Debug: mostrar as primeiras linhas para entender o formato
   console.log('Primeiras 3 linhas de log:');
   lines.slice(0, 3).forEach((line, i) => {
     console.log(`Linha ${i + 1}:`, JSON.stringify(line));
   });
-  
+
   const logs = [];
-  
+
   lines.forEach((line, index) => {
     // Tentar parsear diferentes formatos de log
     let parsedLog = parseLogLine(line, podName, index);
@@ -485,7 +485,7 @@ function parseLogs(logContent, podName) {
       logs.push(parsedLog);
     }
   });
-  
+
   console.log(`Logs parseados com sucesso: ${logs.length} entradas`);
   return logs;
 }
@@ -514,14 +514,14 @@ function parseLogLine(line, podName, index) {
     // Formato com colchetes: [2025-01-03T16:22:07Z]
     /^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?)\]/
   ];
-  
+
   const nginxRegex = /^(\d+\.\d+\.\d+\.\d+) - - \[([^\]]+)\] "([^"]+)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)"$/;
   const jsonRegex = /^\{.*\}$/;
-  
+
   // Gerar ID baseado no conteúdo do log para consistência
   const crypto = require('crypto');
   const logHash = crypto.createHash('md5').update(line).digest('hex').substring(0, 8);
-  
+
   let log = {
     id: `${podName}-${logHash}`,
     timestamp: null,
@@ -530,14 +530,14 @@ function parseLogLine(line, podName, index) {
     message: line,
     raw: line
   };
-  
+
   // Tentar todos os padrões de timestamp
   let timestampFound = false;
   for (const pattern of timestampPatterns) {
     const match = line.match(pattern);
     if (match) {
       let timestamp = match[1];
-      
+
       // Normalizar timestamp para ISO 8601
       if (pattern.source.includes(' ')) {
         // Converter formato com espaço para ISO
@@ -549,7 +549,7 @@ function parseLogLine(line, podName, index) {
         // Adicionar T e Z se necessário
         timestamp = timestamp.replace(' ', 'T') + 'Z';
       }
-      
+
       log.timestamp = timestamp;
       log.message = line.substring(match[0].length).trim();
       log.hasRealTimestamp = true;
@@ -557,13 +557,13 @@ function parseLogLine(line, podName, index) {
       break;
     }
   }
-  
+
   if (!timestampFound) {
     // Se não há timestamp no log, usar timestamp atual apenas como fallback
     log.timestamp = new Date().toISOString();
     log.isApproximateTimestamp = true;
   }
-  
+
   // Verificar se é um log do nginx
   const nginxMatch = line.match(nginxRegex);
   if (nginxMatch) {
@@ -574,7 +574,7 @@ function parseLogLine(line, podName, index) {
     log.level = parseInt(status) >= 400 ? 'error' : 'info';
     log.raw = line;
   }
-  
+
   // Verificar se é um log JSON
   if (jsonRegex.test(line)) {
     try {
@@ -586,7 +586,7 @@ function parseLogLine(line, podName, index) {
       // Não é JSON válido, manter como está
     }
   }
-  
+
   // Determinar nível do log baseado no conteúdo
   if (log.message.toLowerCase().includes('error') || log.message.toLowerCase().includes('fatal')) {
     log.level = 'error';
@@ -595,7 +595,7 @@ function parseLogLine(line, podName, index) {
   } else if (log.message.toLowerCase().includes('debug')) {
     log.level = 'debug';
   }
-  
+
   return log;
 }
 
@@ -607,7 +607,7 @@ function parseSyslogTimestamp(timestamp) {
     'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
     'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
   };
-  
+
   const match = timestamp.match(/(\w{3}) (\d{1,2}) (\d{2}):(\d{2}):(\d{2})/);
   if (match) {
     const [, month, day, hour, minute, second] = match;
@@ -615,7 +615,7 @@ function parseSyslogTimestamp(timestamp) {
     const paddedDay = day.padStart(2, '0');
     return `${currentYear}-${months[month]}-${paddedDay}T${hour}:${minute}:${second}.000Z`;
   }
-  
+
   return new Date().toISOString();
 }
 
@@ -627,27 +627,27 @@ function parseNginxTimestamp(timestamp) {
     'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
     'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
   };
-  
+
   const match = timestamp.match(/(\d{2})\/(\w{3})\/(\d{4}):(\d{2}):(\d{2}):(\d{2})/);
   if (match) {
     const [, day, month, year, hour, minute, second] = match;
     return `${year}-${months[month]}-${day}T${hour}:${minute}:${second}.000Z`;
   }
-  
+
   return new Date().toISOString();
 }
 
 function calculateAge(creationTimestamp) {
   if (!creationTimestamp) return 'Unknown';
-  
+
   const now = new Date();
   const created = new Date(creationTimestamp);
   const diffMs = now - created;
-  
+
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  
+
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
