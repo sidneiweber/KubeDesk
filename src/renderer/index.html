@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="xterm.css">
 </head>
+
 <body>
     <!-- Loading/Setup Screen -->
     <div id="setupScreen" class="screen active">
@@ -23,7 +25,7 @@
                 <div class="config-card">
                     <h2>Configuração do Cluster</h2>
                     <p>Selecione seu arquivo kubeconfig para começar</p>
-                    
+
                     <div class="config-form">
                         <div class="config-input">
                             <label for="kubeconfigPath">Arquivo Kubeconfig:</label>
@@ -32,7 +34,7 @@
                                 <button id="selectConfigBtn" class="btn-secondary">Selecionar</button>
                             </div>
                         </div>
-                        
+
                         <div class="cluster-selection">
                             <label for="clusterSelect">Cluster:</label>
                             <select id="clusterSelect" disabled>
@@ -133,7 +135,7 @@
                         <span class="separator">></span>
                         <span id="currentSection">Pods</span>
                     </div>
-                    
+
                     <div class="dashboard-controls">
                         <div class="namespace-selector">
                             <label for="namespaceSelect">Namespace:</label>
@@ -141,17 +143,18 @@
                                 <option value="all">Todos os namespaces</option>
                             </select>
                         </div>
-                        
+
                         <div class="search-box">
                             <input type="text" id="searchInput" placeholder="Buscar pods...">
                         </div>
-                        
+
                         <button id="refreshBtn" class="btn-secondary">
                             <span class="refresh-icon">🔄</span>
                             Atualizar
                         </button>
-                        
-                        <button id="autoRefreshBtn" class="btn-secondary auto-refresh-enabled" title="Auto-atualização ativa (10s)">
+
+                        <button id="autoRefreshBtn" class="btn-secondary auto-refresh-enabled"
+                            title="Auto-atualização ativa (10s)">
                             <span class="auto-refresh-icon">⏱️</span>
                             Auto
                         </button>
@@ -182,7 +185,7 @@
                                 <span id="podsCount">0 pods</span>
                             </div>
                         </div>
-                        
+
                         <div class="table-container">
                             <table class="pods-table">
                                 <thead>
@@ -311,8 +314,10 @@
                                             </div>
                                             <div class="dropdown-section">
                                                 <h4>Exportar</h4>
-                                                <button id="downloadCsvBtn" class="dropdown-btn">Baixar como CSV</button>
-                                                <button id="downloadTextBtn" class="dropdown-btn">Baixar como Texto</button>
+                                                <button id="downloadCsvBtn" class="dropdown-btn">Baixar como
+                                                    CSV</button>
+                                                <button id="downloadTextBtn" class="dropdown-btn">Baixar como
+                                                    Texto</button>
                                                 <button id="copyCsvBtn" class="dropdown-btn">Copiar como CSV</button>
                                                 <button id="copyTextBtn" class="dropdown-btn">Copiar como Texto</button>
                                             </div>
@@ -321,7 +326,7 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div class="logs-container">
                             <div class="logs-toolbar">
                                 <div class="logs-search-box">
@@ -370,4 +375,5 @@
 
     <script src="renderer.js"></script>
 </body>
+
 </html>

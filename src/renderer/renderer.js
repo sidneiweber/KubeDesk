@@ -723,21 +723,34 @@ function switchSection(section) {
         sectionEl.classList.remove('active');
     });
 
-    document.getElementById(section + 'Section').classList.add('active');
+    const targetSection = document.getElementById(section + 'Section');
+    if (targetSection) {
+        targetSection.classList.add('active');
+    }
 
     // Atualizar breadcrumb
     currentSection = section;
     elements.currentSectionSpan.textContent = section.charAt(0).toUpperCase() + section.slice(1);
 
     // Gerenciar visibilidade do dashboard header e auto-refresh baseado na seção
+    const dashboardContent = document.querySelector('.dashboard-content');
+    
     if (section === 'podLogs') {
         // Esconder header na seção de logs
         elements.dashboardHeader.classList.add('hidden');
+        // Adicionar classe especial ao dashboard-content
+        if (dashboardContent) {
+            dashboardContent.classList.add('logs-active');
+        }
         // Pausar auto-refresh na seção de logs
         stopAutoRefresh();
     } else {
         // Mostrar header nas outras seções
         elements.dashboardHeader.classList.remove('hidden');
+        // Remover classe especial do dashboard-content
+        if (dashboardContent) {
+            dashboardContent.classList.remove('logs-active');
+        }
         // Reativar auto-refresh se estava habilitado
         if (currentConnectionId && autoRefreshEnabled) {
             startAutoRefresh();
@@ -782,8 +795,15 @@ function showDashboard() {
         elements.currentContextSpan.textContent = currentContext;
     }
 
-    // Garantir que as seções estejam no estado correto
-    initializeSections();
+    // Inicializar apenas se não há seção ativa
+    const activeSections = document.querySelectorAll('.content-section.active');
+    if (activeSections.length === 0) {
+        // Ativar seção de pods por padrão apenas se nenhuma seção estiver ativa
+        const podsSection = document.getElementById('podsSection');
+        if (podsSection) {
+            podsSection.classList.add('active');
+        }
+    }
 }
 
 function showSetupScreen() {
@@ -895,33 +915,52 @@ function formatMemory(memory) {
 
 // Funções de logs
 async function showPodLogs(podName, podNamespace) {
-    // Parar streaming anterior se estiver ativo
-    stopLogsStreaming();
+    try {
+        // Parar streaming anterior se estiver ativo
+        stopLogsStreaming();
 
-    currentPodName = podName;
-    currentPodNamespace = podNamespace;
+        currentPodName = podName;
+        currentPodNamespace = podNamespace;
 
-    // Atualizar título
-    elements.podLogsTitle.textContent = `${podName}`;
+        // Atualizar título
+        if (elements.podLogsTitle) {
+            elements.podLogsTitle.textContent = `${podName}`;
+        }
 
-    // Limpar completamente logs anteriores
-    clearLogs();
+        // Limpar completamente logs anteriores
+        clearLogs();
 
-    // Sempre reinicializar o LogViewer para garantir que funcione corretamente
-    initializeLogViewer();
+        // Sempre reinicializar o LogViewer para garantir que funcione corretamente
+        initializeLogViewer();
 
-    // Carregar containers do pod
-    await loadPodContainers();
+        // Carregar containers do pod
+        if (currentConnectionId) {
+            await loadPodContainers();
+        }
 
-    // Mostrar seção de logs
-    switchSection('podLogs');
+        // Mostrar seção de logs
+        switchSection('podLogs');
 
-    // Iniciar streaming de logs
-    startLogsStreaming();
+        // Iniciar streaming de logs
+        if (currentConnectionId) {
+            startLogsStreaming();
+        }
+        
+    } catch (error) {
+        console.error('Erro em showPodLogs:', error);
+        showError('Erro ao carregar logs: ' + error.message);
+    }
 }
 
 function initializeLogViewer() {
     try {
+        // Verificar se o elemento logsContent existe
+        const logsContentElement = document.getElementById('logsContent');
+        if (!logsContentElement) {
+            console.error('Elemento logsContent não encontrado!');
+            return;
+        }
+        
         // Destruir viewer anterior se existir
         if (logViewer) {
             logViewer.destroy();
@@ -951,13 +990,22 @@ function initializeLogViewer() {
     } catch (error) {
         console.error('Erro ao inicializar LogViewer:', error);
         // Fallback para implementação anterior se houver erro
-        elements.logsContent.innerHTML = '<div style="padding: 20px; color: #f14c4c;">Erro ao inicializar terminal de logs. Usando modo de compatibilidade.</div>';
+        const logsContent = document.getElementById('logsContent');
+        if (logsContent) {
+            logsContent.innerHTML = '<div style="padding: 20px; color: #f14c4c;">Erro ao inicializar terminal de logs. Usando modo de compatibilidade.</div>';
+        }
     }
 }
 
 async function loadPodContainers() {
     try {
         const containers = await ipcRenderer.invoke('get-pod-containers', currentConnectionId, currentPodName, currentPodNamespace);
+
+        // Verificar se o elemento containerSelect existe
+        if (!elements.containerSelect) {
+            console.error('Elemento containerSelect não encontrado!');
+            return;
+        }
 
         // Limpar e adicionar containers ao dropdown
         elements.containerSelect.innerHTML = '<option value="">Todos os containers</option>';
@@ -976,6 +1024,9 @@ async function loadPodContainers() {
     } catch (error) {
         console.error('Erro ao carregar containers do pod:', error);
         // Manter opção padrão "Todos os containers"
+        if (elements.containerSelect) {
+            elements.containerSelect.innerHTML = '<option value="">Todos os containers</option>';
+        }
     }
 }
 
@@ -1594,3 +1645,4 @@ function showToast(message, type = 'info') {
         }, 300);
     }, 3000);
 }
+
