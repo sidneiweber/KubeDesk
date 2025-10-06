@@ -424,6 +424,26 @@ ipcMain.handle('get-pod-containers', async (event, connectionId, podName, namesp
   }
 });
 
+ipcMain.handle('get-pod-details', async (event, connectionId, podName, namespace) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+    const response = await k8sApi.readNamespacedPod(podName, namespace);
+
+    return response.body;
+  } catch (error) {
+    throw new Error(`Erro ao buscar detalhes do pod: ${error.message}`);
+  }
+});
+
+ipcMain.handle('calculate-age', async (event, creationTimestamp) => {
+  return calculateAge(creationTimestamp);
+});
+
 // Handler para mostrar menu de contexto
 ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
   const template = [
