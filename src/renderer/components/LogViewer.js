@@ -82,6 +82,9 @@ class LogViewer {
         // Abrir terminal no container
         this.terminal.open(container);
         
+        // Ativar SearchAddon
+        this.searchAddon.activate(this.terminal);
+        
         // Ajustar tamanho inicial
         setTimeout(() => {
             this.fitAddon.fit();

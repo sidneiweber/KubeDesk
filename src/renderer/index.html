@@ -198,7 +198,6 @@
                                         <th>Age</th>
                                         <th>Node</th>
                                         <th>IP</th>
-                                        <th>Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody id="podsTableBody">
@@ -364,6 +363,94 @@
                                         <span class="btn-icon">⬇️</span>
                                         Final
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pod Details Section -->
+                    <div id="podDetailsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="details-header-left">
+                                <button id="backToPodsFromDetailsBtn" class="btn-secondary">
+                                    <span class="btn-icon">←</span>
+                                    Voltar aos Pods
+                                </button>
+                                <h3 id="podDetailsTitle">Detalhes do Pod</h3>
+                            </div>
+                            <div class="details-header-right">
+                                <div class="pod-actions">
+                                    <button id="viewPodLogsBtn" class="btn-primary">
+                                        <span class="btn-icon">📋</span>
+                                        Ver Logs
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pod-details-container">
+                            <div class="pod-details-content">
+                                <!-- Pod Overview -->
+                                <div class="details-section">
+                                    <h4>Informações Básicas</h4>
+                                    <div class="details-grid">
+                                        <div class="detail-item">
+                                            <label>Nome:</label>
+                                            <span id="podDetailName">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Namespace:</label>
+                                            <span id="podDetailNamespace">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Status:</label>
+                                            <span id="podDetailStatus" class="status-badge">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Idade:</label>
+                                            <span id="podDetailAge">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>IP do Pod:</label>
+                                            <span id="podDetailIP">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Node:</label>
+                                            <span id="podDetailNode">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Containers -->
+                                <div class="details-section">
+                                    <h4>Containers</h4>
+                                    <div id="podContainersList" class="containers-list">
+                                        <!-- Containers will be populated here -->
+                                    </div>
+                                </div>
+
+                                <!-- Labels -->
+                                <div class="details-section">
+                                    <h4>Labels</h4>
+                                    <div id="podLabelsList" class="labels-list">
+                                        <!-- Labels will be populated here -->
+                                    </div>
+                                </div>
+
+                                <!-- Environment Variables -->
+                                <div class="details-section">
+                                    <h4>Environment Variables</h4>
+                                    <div id="podEnvVarsList" class="env-vars-list">
+                                        <!-- Environment variables will be populated here -->
+                                    </div>
+                                </div>
+
+                                <!-- Annotations -->
+                                <div class="details-section">
+                                    <h4>Annotations</h4>
+                                    <div id="podAnnotationsList" class="annotations-list">
+                                        <!-- Annotations will be populated here -->
+                                    </div>
                                 </div>
                             </div>
                         </div>
