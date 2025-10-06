@@ -7,6 +7,69 @@ let currentContext = null;
 let kubeconfigPath = null;
 let currentSection = 'pods';
 
+// Cache de preferências por cluster
+const CACHE_KEY_PREFIX = 'kubedesk_preferences_';
+
+// Funções utilitárias para gerenciar cache de preferências
+function getCacheKey(context) {
+    return `${CACHE_KEY_PREFIX}${context}`;
+}
+
+function saveNamespacePreference(context, namespace) {
+    try {
+        const cacheKey = getCacheKey(context);
+        const preferences = {
+            namespace: namespace,
+            lastUsed: new Date().toISOString()
+        };
+        localStorage.setItem(cacheKey, JSON.stringify(preferences));
+        console.log(`Preferência salva para ${context}: namespace=${namespace}`);
+    } catch (error) {
+        console.error('Erro ao salvar preferência de namespace:', error);
+    }
+}
+
+function loadNamespacePreference(context) {
+    try {
+        const cacheKey = getCacheKey(context);
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            const preferences = JSON.parse(cached);
+            console.log(`Preferência carregada para ${context}: namespace=${preferences.namespace}`);
+            return preferences.namespace;
+        }
+    } catch (error) {
+        console.error('Erro ao carregar preferência de namespace:', error);
+    }
+    return null;
+}
+
+function clearOldPreferences() {
+    try {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 30); // Remover preferências com mais de 30 dias
+        
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(CACHE_KEY_PREFIX)) {
+                try {
+                    const data = JSON.parse(localStorage.getItem(key));
+                    if (data.lastUsed && new Date(data.lastUsed) < cutoffDate) {
+                        localStorage.removeItem(key);
+                        console.log(`Preferência antiga removida: ${key}`);
+                    }
+                } catch (e) {
+                    // Se não conseguir fazer parse, remove o item corrompido
+                    localStorage.removeItem(key);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao limpar preferências antigas:', error);
+    }
+}
+
+
 // Auto-refresh configuration
 let autoRefreshInterval = null;
 const AUTO_REFRESH_INTERVAL = 10000; // 10 segundos
@@ -150,6 +213,12 @@ elements.navLinks.forEach(link => {
 // Namespace selector
 elements.namespaceSelect.addEventListener('change', () => {
     if (currentConnectionId) {
+        // Salvar preferência de namespace para este cluster
+        if (currentContext) {
+            const selectedNamespace = elements.namespaceSelect.value;
+            saveNamespacePreference(currentContext, selectedNamespace);
+        }
+
         // Adicionar classe de loading ao seletor
         elements.namespaceSelect.classList.add('loading');
 
@@ -445,6 +514,9 @@ function initializeSections() {
 
 async function initializeApp() {
     try {
+        // Limpar preferências antigas na inicialização
+        clearOldPreferences();
+
         // Mostrar tela de setup por padrão
         showSetupScreen();
 
@@ -568,6 +640,21 @@ async function loadNamespaces() {
             option.textContent = ns.name;
             elements.namespaceSelect.appendChild(option);
         });
+
+        // Carregar preferência de namespace salva para este cluster
+        if (currentContext) {
+            const savedNamespace = loadNamespacePreference(currentContext);
+            if (savedNamespace) {
+                // Verificar se o namespace salvo ainda existe
+                const namespaceExists = namespaces.some(ns => ns.name === savedNamespace) || savedNamespace === 'all';
+                if (namespaceExists) {
+                    elements.namespaceSelect.value = savedNamespace;
+                    console.log(`Namespace preferido restaurado: ${savedNamespace}`);
+                } else {
+                    console.log(`Namespace preferido '${savedNamespace}' não encontrado, usando padrão`);
+                }
+            }
+        }
 
         // Populate namespaces table if we're in the namespaces section
         if (currentSection === 'namespaces') {
