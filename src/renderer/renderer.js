@@ -750,7 +750,7 @@ async function updatePodsData() {
                 </td>
             `;
             elements.podsTableBody.appendChild(row);
-            elements.podsCount.textContent = `0 pods (${namespaceInfo})`;
+            elements.podsCount.textContent = `0 pods`;
             return;
         }
 
@@ -788,7 +788,7 @@ async function updatePodsData() {
         const namespaceInfo = elements.namespaceSelect.value === 'all'
             ? 'todos os namespaces'
             : `namespace: ${elements.namespaceSelect.value}`;
-        elements.podsCount.textContent = `${filteredPods.length} pods (${namespaceInfo})`;
+        elements.podsCount.textContent = `${filteredPods.length} pods`;
 
     } catch (error) {
         throw new Error('Erro ao atualizar dados dos pods: ' + error.message);
@@ -1030,7 +1030,7 @@ async function loadPods() {
                 </td>
             `;
             elements.podsTableBody.appendChild(row);
-            elements.podsCount.textContent = `0 pods (${namespaceInfo})`;
+            elements.podsCount.textContent = `0 pods`;
             return;
         }
 
@@ -1171,7 +1171,7 @@ async function loadPods() {
         const namespaceInfo = elements.namespaceSelect.value === 'all'
             ? 'todos os namespaces'
             : `namespace: ${elements.namespaceSelect.value}`;
-        elements.podsCount.textContent = `${filteredPods.length} pods (${namespaceInfo})`;
+        elements.podsCount.textContent = `${filteredPods.length} pods`;
 
     } catch (error) {
         throw new Error('Erro ao carregar pods: ' + error.message);

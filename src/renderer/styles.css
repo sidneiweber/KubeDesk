@@ -20,7 +20,7 @@ body {
 
 /* Sidebar */
 .sidebar {
-    width: 300px;
+    width: 250px;
     background-color: #2d2d2d;
     border-right: 1px solid #404040;
     display: flex;
@@ -841,7 +841,7 @@ body {
 .pods-table td, .namespaces-table td {
     padding: 12px 15px;
     border-bottom: 1px solid #404040;
-    color: #a3a3a3;
+    color: #fff;
     font-size: 0.9rem;
 }
 
