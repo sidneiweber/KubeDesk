@@ -849,6 +849,138 @@ body {
     background-color: #353535;
 }
 
+/* Resource columns styles */
+.resource-column {
+    min-width: 160px;
+    max-width: 160px;
+    padding: 8px 12px !important;
+}
+
+.resource-usage-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 20px;
+}
+
+.resource-value {
+    font-weight: 600;
+    font-size: 12px;
+    color: #e5e5e5;
+    min-width: 45px;
+    max-width: 45px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.progress-bar-container {
+    flex: 1;
+    min-width: 0;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #404040;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease, background-color 0.3s ease;
+    min-width: 2px;
+}
+
+/* Resource usage color indicators */
+.resource-usage-cell .progress-fill[style*="background-color: #8fbc8f"] {
+    background: linear-gradient(90deg, #8fbc8f 0%, #90ee90 100%);
+}
+
+.resource-usage-cell .progress-fill[style*="background-color: #ffd700"] {
+    background: linear-gradient(90deg, #ffd700 0%, #ffed4e 100%);
+}
+
+.resource-usage-cell .progress-fill[style*="background-color: #ffa500"] {
+    background: linear-gradient(90deg, #ffa500 0%, #ffb84d 100%);
+}
+
+.resource-usage-cell .progress-fill[style*="background-color: #f14c4c"] {
+    background: linear-gradient(90deg, #f14c4c 0%, #ff6b6b 100%);
+}
+
+/* Resource tooltip styles */
+.resource-tooltip {
+    position: absolute;
+    z-index: 1000;
+    background: #2a2a2a;
+    border: 1px solid #404040;
+    border-radius: 6px;
+    padding: 8px 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    font-size: 12px;
+    color: #e5e5e5;
+    max-width: 200px;
+    opacity: 0;
+    transform: translateY(5px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+}
+
+.resource-tooltip.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.resource-tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid #404040;
+}
+
+.tooltip-header {
+    font-weight: 600;
+    color: #ffffff;
+    margin-bottom: 6px;
+    text-align: center;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tooltip-content {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tooltip-label {
+    color: #a3a3a3;
+    font-size: 11px;
+}
+
+.tooltip-value {
+    color: #e5e5e5;
+    font-weight: 500;
+    font-size: 11px;
+}
+
 /* Status colors */
 .status-running {
     color: #4ade80;

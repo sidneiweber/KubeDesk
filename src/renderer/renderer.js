@@ -23,7 +23,6 @@ function saveNamespacePreference(context, namespace) {
             lastUsed: new Date().toISOString()
         };
         localStorage.setItem(cacheKey, JSON.stringify(preferences));
-        console.log(`Preferência salva para ${context}: namespace=${namespace}`);
     } catch (error) {
         console.error('Erro ao salvar preferência de namespace:', error);
     }
@@ -35,7 +34,6 @@ function loadNamespacePreference(context) {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
             const preferences = JSON.parse(cached);
-            console.log(`Preferência carregada para ${context}: namespace=${preferences.namespace}`);
             return preferences.namespace;
         }
     } catch (error) {
@@ -56,7 +54,6 @@ function clearOldPreferences() {
                     const data = JSON.parse(localStorage.getItem(key));
                     if (data.lastUsed && new Date(data.lastUsed) < cutoffDate) {
                         localStorage.removeItem(key);
-                        console.log(`Preferência antiga removida: ${key}`);
                     }
                 } catch (e) {
                     // Se não conseguir fazer parse, remove o item corrompido
@@ -445,7 +442,6 @@ ipcRenderer.on('log-stream-error', (event, { streamId, message }) => {
 
 ipcRenderer.on('log-stream-end', (event, { streamId }) => {
     if (streamId !== currentLogStreamId) return;
-    console.log(`Log stream ${streamId} ended.`);
     const endEntry = {
         id: 'stream-end',
         timestamp: new Date().toISOString(),
@@ -717,10 +713,290 @@ async function loadCurrentSection() {
     }
 }
 
+// Função para atualizar apenas os dados da tabela sem recriar estrutura
+async function updatePodsData() {
+    try {
+        const namespace = elements.namespaceSelect.value;
+        const pods = await ipcRenderer.invoke('get-pods', currentConnectionId, namespace);
+
+        // Filtrar pods se necessário
+        const searchTerm = elements.searchInput.value.toLowerCase().trim();
+        let filteredPods = pods;
+
+        if (searchTerm) {
+            filteredPods = pods.filter(pod =>
+                pod.name.toLowerCase().includes(searchTerm) ||
+                pod.namespace.toLowerCase().includes(searchTerm) ||
+                pod.status.toLowerCase().includes(searchTerm) ||
+                pod.node?.toLowerCase().includes(searchTerm) ||
+                pod.ip?.toLowerCase().includes(searchTerm)
+            );
+        }
+
+        // Verificar se há pods para exibir
+        if (filteredPods.length === 0) {
+            // Limpar tabela se não há pods
+            elements.podsTableBody.innerHTML = '';
+            const namespaceInfo = elements.namespaceSelect.value === 'all'
+                ? 'em nenhum namespace'
+                : `no namespace "${elements.namespaceSelect.value}"`;
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="10" class="no-data">
+                    <div class="no-data-message">
+                        <span class="no-data-icon">📦</span>
+                        <p>Nenhum pod encontrado ${namespaceInfo}</p>
+                    </div>
+                </td>
+            `;
+            elements.podsTableBody.appendChild(row);
+            elements.podsCount.textContent = `0 pods (${namespaceInfo})`;
+            return;
+        }
+
+        // Buscar métricas de recursos para todos os pods em batch
+        let podsWithMetrics;
+        try {
+            const batchResults = await ipcRenderer.invoke('get-pods-metrics-batch', currentConnectionId, filteredPods);
+            podsWithMetrics = batchResults.map(result => ({ ...result.pod, metrics: result.metrics }));
+        } catch (error) {
+            console.error('Erro ao buscar métricas em batch, usando fallback individual:', error);
+            // Fallback para chamadas individuais se o batch falhar
+            podsWithMetrics = await Promise.all(
+                filteredPods.map(async (pod) => {
+                    try {
+                        const metrics = await ipcRenderer.invoke('get-pod-metrics', currentConnectionId, pod.name, pod.namespace);
+                        return { ...pod, metrics };
+                    } catch (error) {
+                        console.error(`Erro ao buscar métricas para pod ${pod.name}:`, error);
+                        return { 
+                            ...pod, 
+                            metrics: {
+                                cpu: { current: '0m', requests: null, percentage: 0 },
+                                memory: { current: '0Mi', requests: null, percentage: 0 }
+                            }
+                        };
+                    }
+                })
+            );
+        }
+
+        // Atualizar dados existentes ou criar novos
+        await updateOrCreatePodRows(podsWithMetrics);
+
+        // Atualizar contador
+        const namespaceInfo = elements.namespaceSelect.value === 'all'
+            ? 'todos os namespaces'
+            : `namespace: ${elements.namespaceSelect.value}`;
+        elements.podsCount.textContent = `${filteredPods.length} pods (${namespaceInfo})`;
+
+    } catch (error) {
+        throw new Error('Erro ao atualizar dados dos pods: ' + error.message);
+    }
+}
+
+// Função para atualizar ou criar linhas da tabela
+async function updateOrCreatePodRows(podsWithMetrics) {
+    const existingRows = Array.from(elements.podsTableBody.querySelectorAll('tr'));
+    const podMap = new Map();
+    
+    // Criar mapa dos pods atuais
+    podsWithMetrics.forEach(pod => {
+        podMap.set(pod.name, pod);
+    });
+
+    // Atualizar linhas existentes
+    existingRows.forEach(row => {
+        const podNameCell = row.querySelector('.pod-name');
+        if (podNameCell) {
+            const podName = podNameCell.dataset.podName;
+            const pod = podMap.get(podName);
+            
+            if (pod) {
+                updatePodRow(row, pod);
+                podMap.delete(podName); // Marcar como processado
+            } else {
+                // Pod não existe mais, remover linha
+                row.remove();
+            }
+        }
+    });
+
+    // Adicionar novos pods
+    for (const pod of podMap.values()) {
+        const row = createPodRow(pod);
+        elements.podsTableBody.appendChild(row);
+    }
+}
+
+// Função para atualizar uma linha existente
+function updatePodRow(row, pod) {
+    // Destacar namespace quando visualizando todos os namespaces
+    const namespaceDisplay = elements.namespaceSelect.value === 'all'
+        ? `<span class="namespace-badge">${pod.namespace}</span>`
+        : pod.namespace;
+
+    // Renderizar barras de progresso de recursos
+    const cpuBar = renderResourceProgressBar(
+        pod.metrics.cpu.current,
+        pod.metrics.cpu.requests,
+        pod.metrics.cpu.percentage,
+        'cpu',
+        pod.metrics.cpu.limits
+    );
+    
+    const memoryBar = renderResourceProgressBar(
+        pod.metrics.memory.current,
+        pod.metrics.memory.requests,
+        pod.metrics.memory.percentage,
+        'memory',
+        pod.metrics.memory.limits
+    );
+
+    // Atualizar conteúdo das células
+    const cells = row.querySelectorAll('td');
+    if (cells.length >= 10) {
+        cells[0].innerHTML = pod.name; // Nome
+        cells[1].innerHTML = namespaceDisplay; // Namespace
+        cells[2].innerHTML = `<span class="status-${pod.status.toLowerCase()}">${pod.status}</span>`; // Status
+        cells[3].innerHTML = `<span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span>`; // Ready
+        cells[4].textContent = pod.restarts; // Restarts
+        cells[5].textContent = pod.age; // Age
+        cells[6].innerHTML = cpuBar; // CPU
+        cells[7].innerHTML = memoryBar; // Memory
+        cells[8].textContent = pod.node || '-'; // Node
+        cells[9].textContent = pod.ip || '-'; // IP
+    }
+
+    // Re-adicionar event listeners para as barras de progresso
+    addProgressBarListeners(row);
+}
+
+// Função para criar uma nova linha
+function createPodRow(pod) {
+    const row = document.createElement('tr');
+
+    // Destacar namespace quando visualizando todos os namespaces
+    const namespaceDisplay = elements.namespaceSelect.value === 'all'
+        ? `<span class="namespace-badge">${pod.namespace}</span>`
+        : pod.namespace;
+
+    // Renderizar barras de progresso de recursos
+    const cpuBar = renderResourceProgressBar(
+        pod.metrics.cpu.current,
+        pod.metrics.cpu.requests,
+        pod.metrics.cpu.percentage,
+        'cpu',
+        pod.metrics.cpu.limits
+    );
+    
+    const memoryBar = renderResourceProgressBar(
+        pod.metrics.memory.current,
+        pod.metrics.memory.requests,
+        pod.metrics.memory.percentage,
+        'memory',
+        pod.metrics.memory.limits
+    );
+
+    row.innerHTML = `
+        <td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}">${pod.name}</td>
+        <td class="pod-namespace">${namespaceDisplay}</td>
+        <td><span class="status-${pod.status.toLowerCase()}">${pod.status}</span></td>
+        <td><span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span></td>
+        <td>${pod.restarts}</td>
+        <td>${pod.age}</td>
+        <td class="resource-column">${cpuBar}</td>
+        <td class="resource-column">${memoryBar}</td>
+        <td>${pod.node || '-'}</td>
+        <td>${pod.ip || '-'}</td>
+    `;
+
+    // Adicionar event listeners
+    addPodRowListeners(row);
+    
+    return row;
+}
+
+// Função para adicionar event listeners a uma linha
+function addPodRowListeners(row) {
+    // Context menu para nome do pod
+    const podNameCell = row.querySelector('.pod-name');
+    if (podNameCell) {
+        podNameCell.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const podName = e.target.dataset.podName;
+            const podNamespace = e.target.dataset.podNamespace;
+            showPodContextMenu(podName, podNamespace);
+        });
+    }
+
+    // Event listeners para barras de progresso
+    addProgressBarListeners(row);
+}
+
+// Função para adicionar event listeners às barras de progresso
+function addProgressBarListeners(row) {
+    row.querySelectorAll('.progress-bar').forEach(bar => {
+        // Remover listeners existentes para evitar duplicação
+        const newBar = bar.cloneNode(true);
+        bar.parentNode.replaceChild(newBar, bar);
+        
+        newBar.addEventListener('mouseenter', (e) => {
+            const tooltipContent = e.target.dataset.tooltip;
+            const resourceType = e.target.dataset.resourceType;
+            const current = e.target.dataset.current;
+            const requests = e.target.dataset.requests;
+            const percentage = e.target.dataset.percentage;
+            
+            const detailedContent = `
+                <div class="tooltip-header">${resourceType.toUpperCase()} Usage</div>
+                <div class="tooltip-content">
+                    <div class="tooltip-row">
+                        <span class="tooltip-label">Atual:</span>
+                        <span class="tooltip-value">${current}</span>
+                    </div>
+                    ${requests !== 'N/A' ? `
+                    <div class="tooltip-row">
+                        <span class="tooltip-label">Requests:</span>
+                        <span class="tooltip-value">${requests}</span>
+                    </div>
+                    ` : ''}
+                    <div class="tooltip-row">
+                        <span class="tooltip-label">Limits:</span>
+                        <span class="tooltip-value">${e.target.dataset.limits || 'N/A'}</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span class="tooltip-label">Uso vs Limits:</span>
+                        <span class="tooltip-value">${percentage}</span>
+                    </div>
+                </div>
+            `;
+            
+            createTooltip(detailedContent, e.pageX, e.pageY);
+        });
+        
+        newBar.addEventListener('mouseleave', () => {
+            removeTooltip();
+        });
+        
+        newBar.addEventListener('mousemove', (e) => {
+            const tooltip = document.getElementById('resource-tooltip');
+            if (tooltip) {
+                tooltip.style.left = `${e.pageX}px`;
+                tooltip.style.top = `${e.pageY - 40}px`;
+            }
+        });
+    });
+}
+
 async function loadPods() {
     try {
         const namespace = elements.namespaceSelect.value; // Passar o valor exato (incluindo 'all')
         const pods = await ipcRenderer.invoke('get-pods', currentConnectionId, namespace);
+
+        // Preservar posição do scroll
+        const tableContainer = elements.podsTableBody.closest('.table-container') || elements.podsTableBody.closest('.pods-table-wrapper');
+        const scrollTop = tableContainer ? tableContainer.scrollTop : 0;
 
         // Limpar tabela
         elements.podsTableBody.innerHTML = '';
@@ -746,7 +1022,7 @@ async function loadPods() {
                 ? 'em nenhum namespace'
                 : `no namespace "${elements.namespaceSelect.value}"`;
             row.innerHTML = `
-                <td colspan="8" class="no-data">
+                <td colspan="10" class="no-data">
                     <div class="no-data-message">
                         <span class="no-data-icon">📦</span>
                         <p>Nenhum pod encontrado ${namespaceInfo}</p>
@@ -758,14 +1034,56 @@ async function loadPods() {
             return;
         }
 
+        // Buscar métricas de recursos para todos os pods em batch
+        let podsWithMetrics;
+        try {
+            const batchResults = await ipcRenderer.invoke('get-pods-metrics-batch', currentConnectionId, filteredPods);
+            podsWithMetrics = batchResults.map(result => ({ ...result.pod, metrics: result.metrics }));
+        } catch (error) {
+            console.error('Erro ao buscar métricas em batch, usando fallback individual:', error);
+            // Fallback para chamadas individuais se o batch falhar
+            podsWithMetrics = await Promise.all(
+                filteredPods.map(async (pod) => {
+                    try {
+                        const metrics = await ipcRenderer.invoke('get-pod-metrics', currentConnectionId, pod.name, pod.namespace);
+                        return { ...pod, metrics };
+                    } catch (error) {
+                        console.error(`Erro ao buscar métricas para pod ${pod.name}:`, error);
+                        return { 
+                            ...pod, 
+                            metrics: {
+                                cpu: { current: '0m', requests: null, percentage: 0 },
+                                memory: { current: '0Mi', requests: null, percentage: 0 }
+                            }
+                        };
+                    }
+                })
+            );
+        }
+
         // Adicionar pods à tabela
-        filteredPods.forEach(pod => {
+        podsWithMetrics.forEach(pod => {
             const row = document.createElement('tr');
 
             // Destacar namespace quando visualizando todos os namespaces
             const namespaceDisplay = elements.namespaceSelect.value === 'all'
                 ? `<span class="namespace-badge">${pod.namespace}</span>`
                 : pod.namespace;
+
+            // Renderizar barras de progresso de recursos
+            const cpuBar = renderResourceProgressBar(
+                pod.metrics.cpu.current,
+                pod.metrics.cpu.requests,
+                pod.metrics.cpu.percentage,
+                'cpu'
+            );
+            
+            const memoryBar = renderResourceProgressBar(
+                pod.metrics.memory.current,
+                pod.metrics.memory.requests,
+                pod.metrics.memory.percentage,
+                'memory'
+            );
 
             row.innerHTML = `
                 <td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}">${pod.name}</td>
@@ -774,9 +1092,10 @@ async function loadPods() {
                 <td><span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span></td>
                 <td>${pod.restarts}</td>
                 <td>${pod.age}</td>
+                <td class="resource-column">${cpuBar}</td>
+                <td class="resource-column">${memoryBar}</td>
                 <td>${pod.node || '-'}</td>
                 <td>${pod.ip || '-'}</td>
-
             `;
             elements.podsTableBody.appendChild(row);
         });
@@ -798,6 +1117,53 @@ async function loadPods() {
                 const podName = e.target.dataset.podName;
                 const podNamespace = e.target.dataset.podNamespace;
                 showPodContextMenu(podName, podNamespace);
+            });
+        });
+
+        // Adicionar event listeners para tooltips das barras de progresso
+        elements.podsTableBody.querySelectorAll('.progress-bar').forEach(bar => {
+            bar.addEventListener('mouseenter', (e) => {
+                const tooltipContent = e.target.dataset.tooltip;
+                const resourceType = e.target.dataset.resourceType;
+                const current = e.target.dataset.current;
+                const requests = e.target.dataset.requests;
+                const percentage = e.target.dataset.percentage;
+                
+                // Criar conteúdo detalhado do tooltip
+                const detailedContent = `
+                    <div class="tooltip-header">${resourceType.toUpperCase()} Usage</div>
+                    <div class="tooltip-content">
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">Atual:</span>
+                            <span class="tooltip-value">${current}</span>
+                        </div>
+                        ${requests !== 'N/A' ? `
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">Requests:</span>
+                            <span class="tooltip-value">${requests}</span>
+                        </div>
+                        ` : ''}
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">Uso:</span>
+                            <span class="tooltip-value">${percentage}</span>
+                        </div>
+                    </div>
+                `;
+                
+                createTooltip(detailedContent, e.pageX, e.pageY);
+            });
+            
+            bar.addEventListener('mouseleave', () => {
+                removeTooltip();
+            });
+            
+            bar.addEventListener('mousemove', (e) => {
+                // Atualizar posição do tooltip enquanto o mouse se move
+                const tooltip = document.getElementById('resource-tooltip');
+                if (tooltip) {
+                    tooltip.style.left = `${e.pageX}px`;
+                    tooltip.style.top = `${e.pageY - 40}px`;
+                }
             });
         });
 
@@ -1003,6 +1369,87 @@ function formatResource(resource) {
     };
 }
 
+// Função para criar tooltip
+function createTooltip(content, x, y) {
+    // Remover tooltip anterior se existir
+    const existingTooltip = document.getElementById('resource-tooltip');
+    if (existingTooltip) {
+        existingTooltip.remove();
+    }
+
+    // Criar novo tooltip
+    const tooltip = document.createElement('div');
+    tooltip.id = 'resource-tooltip';
+    tooltip.className = 'resource-tooltip';
+    tooltip.innerHTML = content;
+    
+    // Posicionar tooltip
+    tooltip.style.left = `${x}px`;
+    tooltip.style.top = `${y - 40}px`; // Posicionar acima do mouse
+    
+    document.body.appendChild(tooltip);
+    
+    // Mostrar tooltip com animação
+    setTimeout(() => {
+        tooltip.classList.add('show');
+    }, 10);
+    
+    return tooltip;
+}
+
+// Função para remover tooltip
+function removeTooltip() {
+    const tooltip = document.getElementById('resource-tooltip');
+    if (tooltip) {
+        tooltip.classList.remove('show');
+        setTimeout(() => {
+            if (tooltip.parentNode) {
+                tooltip.remove();
+            }
+        }, 200);
+    }
+}
+
+// Função para renderizar barra de progresso de recursos
+function renderResourceProgressBar(current, requests, percentage, type, limits = null) {
+    const safePercentage = Math.min(100, Math.max(0, percentage));
+    
+    // Definir cores baseadas na porcentagem e tipo
+    let barColor;
+    if (safePercentage >= 90) {
+        barColor = '#f14c4c'; // Vermelho para alto uso
+    } else if (safePercentage >= 70) {
+        barColor = '#ffa500'; // Laranja para uso médio-alto
+    } else if (safePercentage >= 50) {
+        barColor = '#ffd700'; // Amarelo para uso médio
+    } else {
+        barColor = '#8fbc8f'; // Verde para uso baixo
+    }
+    
+    // Criar conteúdo do tooltip baseado nos limits (fallback para requests)
+    const referenceValue = limits || requests;
+    const tooltipContent = referenceValue 
+        ? `${safePercentage}% de ${referenceValue}`
+        : `${safePercentage}% (sem limits/requests definidos)`;
+    
+    return `
+        <div class="resource-usage-cell">
+            <div class="resource-value">${current}</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" 
+                     data-tooltip="${tooltipContent}"
+                     data-resource-type="${type}"
+                     data-current="${current}"
+                     data-requests="${requests || 'N/A'}"
+                     data-limits="${limits || 'N/A'}"
+                     data-percentage="${safePercentage}%">
+                    <div class="progress-fill" style="width: ${safePercentage}%; background-color: ${barColor};"></div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 function formatCPU(cpu) {
     if (cpu.endsWith('m')) {
         return cpu;
@@ -1177,7 +1624,6 @@ async function startLogsStreaming() {
 async function loadInitialLogs() {
     // Função mantida para compatibilidade, mas não carrega mais logs históricos
     // Agora usamos apenas streaming em tempo real
-    console.log(`Iniciando visualização de logs em tempo real para pod: ${currentPodName} no namespace: ${currentPodNamespace}`);
 }
 
 async function streamLogs() {
@@ -1198,8 +1644,6 @@ async function streamLogs() {
 
         if (result && result.success) {
             currentLogStreamId = result.streamId;
-            console.log(`Streaming de logs iniciado com ID: ${currentLogStreamId}`);
-            console.log('Modo tempo real ativado');
         } else {
             throw new Error(result.message || 'Falha ao iniciar o streaming de logs.');
         }
@@ -1360,7 +1804,6 @@ function resumeLogsStreaming() {
 function stopLogsStreaming() {
     if (currentLogStreamId) {
         ipcRenderer.send('stop-stream-pod-logs', currentLogStreamId);
-        console.log(`Pedido para parar o stream de logs: ${currentLogStreamId}`);
         currentLogStreamId = null;
     }
 
@@ -1548,7 +1991,6 @@ function handleContextMenuAction(action, data) {
 // Função para mostrar detalhes do pod
 async function showPodDetails(podName, podNamespace) {
     try {
-        console.log(`Carregando detalhes do pod: ${podName} no namespace: ${podNamespace}`);
         
         // Mostrar loading
         showLoading(true);
@@ -1580,7 +2022,7 @@ async function showPodDetails(podName, podNamespace) {
             elements.podDetailNode.textContent = podDetails.spec.nodeName || '-';
             
             // Containers
-            renderPodContainers(podDetails);
+            await renderPodContainers(podDetails);
             
             // Labels
             renderPodLabels(podDetails.metadata.labels || {});
@@ -1615,41 +2057,50 @@ function reloadPod(podName, podNamespace) {
     showError(`Recarregar pod ${podName} em ${podNamespace} - Funcionalidade em desenvolvimento`);
 }
 
-// Função para calcular uso de recursos (simulado)
-function calculateResourceUsage(requestValue, type) {
+// Função para calcular uso de recursos (baseado em limits com fallback para requests)
+function calculateResourceUsage(requestValue, type, limitValue = null) {
     let usagePercentage;
     let currentValue;
     let requestValueFormatted;
+    let limitValueFormatted;
+    
+    // Usar limits como referência, fallback para requests
+    const referenceValue = limitValue || requestValue;
+    const referenceType = limitValue ? 'limits' : 'requests';
     
     if (type === 'cpu') {
-        if (requestValue) {
-            // Para CPU, simular uso baixo (5-15% das requests)
-            usagePercentage = Math.random() * 10 + 5; // 5-15%
-            const requestMillicores = parseCpuValue(requestValue);
-            const currentMillicores = Math.floor((requestMillicores * usagePercentage) / 100);
+        if (referenceValue) {
+            // Para CPU, simular uso baseado na referência (limits ou requests)
+            usagePercentage = Math.random() * 30 + 10; // 10-40%
+            const referenceMillicores = parseCpuValue(referenceValue);
+            const currentMillicores = Math.floor((referenceMillicores * usagePercentage) / 100);
             currentValue = `${currentMillicores}m`;
-            requestValueFormatted = requestValue;
+            requestValueFormatted = requestValue || '-';
+            limitValueFormatted = limitValue || '-';
         } else {
-            // Sem requests - simular uso absoluto baixo
+            // Sem requests nem limits - simular uso absoluto baixo
             const simulatedMillicores = Math.floor(Math.random() * 50) + 10; // 10-60m
             currentValue = `${simulatedMillicores}m`;
             usagePercentage = Math.min(100, (simulatedMillicores / 100) * 100); // Baseado em 100m como referência
             requestValueFormatted = '-';
+            limitValueFormatted = '-';
         }
     } else if (type === 'memory') {
-        if (requestValue) {
-            // Para memória, simular uso baixo (8-20% das requests)
-            usagePercentage = Math.random() * 12 + 8; // 8-20%
-            const requestBytes = parseMemoryValue(requestValue);
-            const currentBytes = Math.floor((requestBytes * usagePercentage) / 100);
+        if (referenceValue) {
+            // Para memória, simular uso baseado na referência (limits ou requests)
+            usagePercentage = Math.random() * 40 + 15; // 15-55%
+            const referenceBytes = parseMemoryValue(referenceValue);
+            const currentBytes = Math.floor((referenceBytes * usagePercentage) / 100);
             currentValue = formatMemoryValue(currentBytes);
-            requestValueFormatted = requestValue;
+            requestValueFormatted = requestValue || '-';
+            limitValueFormatted = limitValue || '-';
         } else {
-            // Sem requests - simular uso absoluto baixo
+            // Sem requests nem limits - simular uso absoluto baixo
             const simulatedBytes = Math.floor(Math.random() * 500 * 1024 * 1024) + 100 * 1024 * 1024; // 100-600Mi
             currentValue = formatMemoryValue(simulatedBytes);
             usagePercentage = Math.min(100, (simulatedBytes / (1024 * 1024 * 1024)) * 100); // Baseado em 1Gi como referência
             requestValueFormatted = '-';
+            limitValueFormatted = '-';
         }
     }
     
@@ -1657,7 +2108,10 @@ function calculateResourceUsage(requestValue, type) {
         current: currentValue,
         percentage: Math.round(usagePercentage),
         request: requestValueFormatted,
-        hasRequests: !!requestValue
+        limit: limitValueFormatted,
+        hasRequests: !!requestValue,
+        hasLimits: !!limitValue,
+        referenceType: referenceType
     };
 }
 
@@ -1708,13 +2162,69 @@ function formatMemoryValue(bytes) {
     return `${size.toFixed(2)}${units[unitIndex]}`;
 }
 
+// Função auxiliar para converter CPU para millicores (copiada do main.js)
+function parseCpuToMillicores(cpuStr) {
+    if (!cpuStr) return 0;
+    
+    if (cpuStr.endsWith('m')) {
+        return parseInt(cpuStr.slice(0, -1));
+    } else if (cpuStr.endsWith('n')) {
+        return Math.floor(parseInt(cpuStr.slice(0, -1)) / 1000000);
+    } else {
+        return Math.floor(parseFloat(cpuStr) * 1000);
+    }
+}
+
+// Função auxiliar para converter memória para Mi (copiada do main.js)
+function parseMemoryToMi(memStr) {
+    if (!memStr) return 0;
+    
+    const units = {
+        'Ki': 1024,
+        'Mi': 1024 * 1024,
+        'Gi': 1024 * 1024 * 1024,
+        'Ti': 1024 * 1024 * 1024 * 1024
+    };
+    
+    for (const [unit, multiplier] of Object.entries(units)) {
+        if (memStr.endsWith(unit)) {
+            return Math.floor(parseFloat(memStr.slice(0, -unit.length)) * multiplier / (1024 * 1024));
+        }
+    }
+    
+    // Se não tem unidade, assumir bytes e converter para Mi
+    return Math.floor(parseInt(memStr) / (1024 * 1024));
+}
+
 // Função para renderizar containers do pod
-function renderPodContainers(podDetails) {
+async function renderPodContainers(podDetails) {
     const containersList = elements.podContainersList;
     containersList.innerHTML = '';
     
     if (podDetails.spec.containers) {
-        podDetails.spec.containers.forEach(container => {
+        // Buscar métricas reais do pod (usando batch para melhor performance)
+        let podMetrics = null;
+        try {
+            // Tentar usar batch primeiro (mais eficiente)
+            const batchResults = await ipcRenderer.invoke('get-pods-metrics-batch', currentConnectionId, [{
+                name: podDetails.metadata.name,
+                namespace: podDetails.metadata.namespace
+            }]);
+            
+            if (batchResults && batchResults.length > 0) {
+                podMetrics = batchResults[0].metrics;
+            }
+        } catch (error) {
+            console.warn('Erro ao buscar métricas em batch, tentando individual:', error);
+            // Fallback para chamada individual
+            try {
+                podMetrics = await ipcRenderer.invoke('get-pod-metrics', currentConnectionId, podDetails.metadata.name, podDetails.metadata.namespace);
+            } catch (individualError) {
+                console.warn('Erro ao buscar métricas individuais para detalhes do pod:', individualError);
+            }
+        }
+
+        for (const container of podDetails.spec.containers) {
             const containerDiv = document.createElement('div');
             containerDiv.className = 'container-item';
             
@@ -1727,9 +2237,38 @@ function renderPodContainers(podDetails) {
             const requests = container.resources?.requests || {};
             const limits = container.resources?.limits || {};
             
-            // Calcular porcentagens de uso (simulado - em produção viria de métricas)
-            const cpuUsage = calculateResourceUsage(requests.cpu, 'cpu');
-            const memoryUsage = calculateResourceUsage(requests.memory, 'memory');
+            // Usar métricas reais se disponíveis, senão usar cálculo baseado em requests/limits
+            let cpuUsage, memoryUsage;
+            
+            if (podMetrics && podMetrics.cpu && podMetrics.memory) {
+                // Usar métricas reais do pod
+                // Para simplificar, usar as métricas do pod para todos os containers
+                // (em um cenário real, seria necessário buscar métricas por container individual)
+                
+                cpuUsage = {
+                    current: podMetrics.cpu.current,
+                    percentage: Math.round(podMetrics.cpu.percentage),
+                    request: requests.cpu || '-',
+                    limit: limits.cpu || '-',
+                    hasRequests: !!requests.cpu,
+                    hasLimits: !!limits.cpu,
+                    referenceType: limits.cpu ? 'limits' : 'requests'
+                };
+                
+                memoryUsage = {
+                    current: podMetrics.memory.current,
+                    percentage: Math.round(podMetrics.memory.percentage),
+                    request: requests.memory || '-',
+                    limit: limits.memory || '-',
+                    hasRequests: !!requests.memory,
+                    hasLimits: !!limits.memory,
+                    referenceType: limits.memory ? 'limits' : 'requests'
+                };
+            } else {
+                // Fallback para cálculo baseado em requests/limits
+                cpuUsage = calculateResourceUsage(requests.cpu, 'cpu', limits.cpu);
+                memoryUsage = calculateResourceUsage(requests.memory, 'memory', limits.memory);
+            }
             
             containerDiv.innerHTML = `
                 <div class="container-header">
@@ -1748,13 +2287,14 @@ function renderPodContainers(podDetails) {
                             <span class="resource-label">CPU Usage</span>
                             <span class="resource-value">${cpuUsage.current}</span>
                         </div>
-                        ${cpuUsage.hasRequests ? `
+                        ${(cpuUsage.hasRequests || cpuUsage.hasLimits) ? `
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${cpuUsage.percentage}%"></div>
                         </div>
                         <div class="resource-allocation">
                             <span>Allocation</span>
                             <span>Requests: ${cpuUsage.request}</span>
+                            ${cpuUsage.hasLimits ? `<span>Limits: ${cpuUsage.limit}</span>` : ''}
                         </div>
                         ` : `
                         <div class="resource-allocation">
@@ -1770,13 +2310,14 @@ function renderPodContainers(podDetails) {
                             <span class="resource-label">Memory Usage</span>
                             <span class="resource-value">${memoryUsage.current}</span>
                         </div>
-                        ${memoryUsage.hasRequests ? `
+                        ${(memoryUsage.hasRequests || memoryUsage.hasLimits) ? `
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${memoryUsage.percentage}%"></div>
                         </div>
                         <div class="resource-allocation">
                             <span>Allocation</span>
                             <span>Requests: ${memoryUsage.request}</span>
+                            ${memoryUsage.hasLimits ? `<span>Limits: ${memoryUsage.limit}</span>` : ''}
                         </div>
                         ` : `
                         <div class="resource-allocation">
@@ -1794,7 +2335,7 @@ function renderPodContainers(podDetails) {
             `;
             
             containersList.appendChild(containerDiv);
-        });
+        }
     }
 }
 
@@ -1904,13 +2445,10 @@ function startAutoRefresh() {
 
     if (!autoRefreshEnabled) return;
 
-    console.log('Iniciando auto-refresh a cada', AUTO_REFRESH_INTERVAL / 1000, 'segundos');
-
     autoRefreshInterval = setInterval(async () => {
         // Só atualizar se estiver conectado e não estiver na seção de logs
         if (currentConnectionId && currentSection !== 'podLogs') {
             try {
-                console.log('Auto-refresh: atualizando seção', currentSection);
                 await loadCurrentSectionSilently();
             } catch (error) {
                 console.error('Erro no auto-refresh:', error);
@@ -1926,7 +2464,6 @@ function startAutoRefresh() {
 
 function stopAutoRefresh() {
     if (autoRefreshInterval) {
-        console.log('Parando auto-refresh');
         clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
     }
@@ -1951,7 +2488,8 @@ async function loadCurrentSectionSilently() {
     try {
         switch (currentSection) {
             case 'pods':
-                await loadPods();
+                // Usar updatePodsData para preservar scroll e atualizar apenas dados
+                await updatePodsData();
                 break;
             case 'deployments':
                 // Implementar quando necessário
@@ -1976,7 +2514,6 @@ function handleAutoRefreshToggle() {
     // Mostrar feedback visual
     const message = enabled ? 'Auto-atualização ativada (10s)' : 'Auto-atualização desativada';
     const type = enabled ? 'success' : 'info';
-    console.log(message);
 
     // Mostrar toast notification
     showToast(message, type);
