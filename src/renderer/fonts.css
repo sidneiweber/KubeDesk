@@ -1,0 +1,68 @@
+/* Local Font Definitions */
+
+/* Inter Font Family */
+@font-face {
+    font-family: 'Inter';
+    src: url('fonts/web/Inter-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('fonts/web/Inter-Medium.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('fonts/web/Inter-SemiBold.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('fonts/web/Inter-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('fonts/web/Inter-Light.woff2') format('woff2');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* JetBrains Mono Font Family */
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('fonts/fonts/webfonts/JetBrainsMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('fonts/fonts/webfonts/JetBrainsMono-Medium.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('fonts/fonts/webfonts/JetBrainsMono-SemiBold.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+

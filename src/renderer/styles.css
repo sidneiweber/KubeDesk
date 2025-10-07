@@ -6,7 +6,7 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background-color: #1a1a1a;
     color: #ffffff;
     overflow: hidden;
@@ -32,9 +32,22 @@ body {
     border-bottom: 1px solid #404040;
 }
 
-.sidebar-header h2 {
-    color: #4a9eff;
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     margin-bottom: 10px;
+}
+
+.sidebar-logo .logo-icon {
+    width: 32px;
+    height: 32px;
+    filter: drop-shadow(0 2px 4px rgba(74, 158, 255, 0.3));
+}
+
+.sidebar-logo h2 {
+    color: #4a9eff;
+    margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
 }
@@ -792,7 +805,8 @@ body {
     border-radius: 8px;
     border: 1px solid #404040;
     overflow: hidden;
-    max-height: calc(100vh - 250px);
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -1504,30 +1518,6 @@ body {
     background: #1177bb;
 }
 
-.logs-follow-btn {
-    background: #0e639c;
-    border: none;
-    color: white;
-    padding: 4px 12px;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.logs-follow-btn:hover {
-    background: #1177bb;
-}
-
-.logs-follow-btn.following {
-    background: #16825d;
-}
-
-.logs-follow-btn.following:hover {
-    background: #1a9870;
-}
 
 /* Log level indicators */
 .log-level-error {
@@ -1828,6 +1818,7 @@ s section specific styles */
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    flex: 1;
 }
 
 #podsSection .section-header {
@@ -1838,6 +1829,7 @@ s section specific styles */
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    height: 100%;
 }
 
 /* Ensure proper scrolling for pods table */
@@ -1866,16 +1858,82 @@ s section specific styles */
     background: #666;
 }
 
+/* Custom scrollbar for logs */
+.logs-container::-webkit-scrollbar,
+.logs-content::-webkit-scrollbar,
+.xterm ::-webkit-scrollbar {
+    width: 8px;
+}
+
+.logs-container::-webkit-scrollbar-track,
+.logs-content::-webkit-scrollbar-track,
+.xterm ::-webkit-scrollbar-track {
+    background: #2d2d2d;
+    border-radius: 4px;
+}
+
+.logs-container::-webkit-scrollbar-thumb,
+.logs-content::-webkit-scrollbar-thumb,
+.xterm ::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.logs-container::-webkit-scrollbar-thumb:hover,
+.logs-content::-webkit-scrollbar-thumb:hover,
+.xterm ::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+/* Custom scrollbar for pod details */
+.pod-details-container::-webkit-scrollbar,
+.details-section::-webkit-scrollbar,
+.containers-list::-webkit-scrollbar,
+.labels-list::-webkit-scrollbar,
+.annotations-list::-webkit-scrollbar,
+.env-vars-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.pod-details-container::-webkit-scrollbar-track,
+.details-section::-webkit-scrollbar-track,
+.containers-list::-webkit-scrollbar-track,
+.labels-list::-webkit-scrollbar-track,
+.annotations-list::-webkit-scrollbar-track,
+.env-vars-list::-webkit-scrollbar-track {
+    background: #2d2d2d;
+    border-radius: 4px;
+}
+
+.pod-details-container::-webkit-scrollbar-thumb,
+.details-section::-webkit-scrollbar-thumb,
+.containers-list::-webkit-scrollbar-thumb,
+.labels-list::-webkit-scrollbar-thumb,
+.annotations-list::-webkit-scrollbar-thumb,
+.env-vars-list::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.pod-details-container::-webkit-scrollbar-thumb:hover,
+.details-section::-webkit-scrollbar-thumb:hover,
+.containers-list::-webkit-scrollbar-thumb:hover,
+.labels-list::-webkit-scrollbar-thumb:hover,
+.annotations-list::-webkit-scrollbar-thumb:hover,
+.env-vars-list::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
 /* Responsive table adjustments */
 @media (max-height: 600px) {
     .table-container {
-        max-height: calc(100vh - 200px);
+        min-height: 200px;
     }
 }
 
 @media (max-height: 500px) {
     .table-container {
-        max-height: calc(100vh - 150px);
+        min-height: 150px;
     }
 }/* Dashboard
  screen layout */
@@ -1893,7 +1951,7 @@ s section specific styles */
 /* Ensure proper height calculation for different screen sizes */
 @media (max-height: 768px) {
     .table-container {
-        max-height: calc(100vh - 180px);
+        min-height: 300px;
     }
     
     .dashboard-content {
@@ -1903,7 +1961,7 @@ s section specific styles */
 
 @media (max-height: 600px) {
     .table-container {
-        max-height: calc(100vh - 160px);
+        min-height: 250px;
     }
     
     .dashboard-content {
@@ -1980,6 +2038,29 @@ s section specific styles */
     padding: 20px;
     margin-bottom: 20px;
     border: 1px solid #404040;
+}
+
+.details-section-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.details-section-group .details-section {
+    margin-bottom: 0;
+}
+
+/* Responsive layout for pod details */
+@media (max-width: 768px) {
+    .details-section-group {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .details-section-group .details-section {
+        margin-bottom: 0;
+    }
 }
 
 .details-section h4 {
@@ -2119,7 +2200,7 @@ s section specific styles */
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
-    font-family: 'Consolas', 'Courier New', monospace;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
     word-break: break-all;
 }
 
@@ -2190,14 +2271,14 @@ s section specific styles */
     color: #4fc3f7;
     font-weight: 600;
     font-size: 12px;
-    font-family: 'Consolas', 'Courier New', monospace;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
     word-break: break-all;
 }
 
 .env-var-value {
     color: #ffffff;
     font-size: 11px;
-    font-family: 'Consolas', 'Courier New', monospace;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
     word-break: break-all;
     background: #1e1e1e;
     padding: 4px 6px;
@@ -2303,6 +2384,6 @@ s section specific styles */
 }
 
 .resource-allocation span:last-child {
-    font-family: 'Consolas', 'Courier New', monospace;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
     color: #ffffff;
 }
