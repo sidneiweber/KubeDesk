@@ -45,7 +45,6 @@ class LogViewer {
         
         this.logBuffer = [];
         this.maxBufferSize = 5000;
-        this.isFollowing = true;
         this.searchTerm = '';
         this.welcomeMessageShown = true;
         this.logLevels = {
@@ -93,9 +92,6 @@ class LogViewer {
         // Event listeners
         this.setupEventListeners();
         
-        // Mensagem inicial
-        this.writeWelcomeMessage();
-        
         return this;
     }
     
@@ -126,26 +122,7 @@ class LogViewer {
             // Considerar que está seguindo se estiver nas últimas 3 linhas
             const isNearBottom = (buffer.viewportY + buffer.rows) >= (buffer.length - 3);
             
-            // Só atualizar isFollowing se não estivermos forçando scroll automático
-            if (!this._autoScrolling) {
-                this.isFollowing = isNearBottom;
-            }
         });
-    }
-    
-    writeWelcomeMessage() {
-        if (!this.terminal) return;
-        
-        const welcome = `\x1b[36m╭─────────────────────────────────────────────────────────────╮\x1b[0m
-\x1b[36m│\x1b[0m                    \x1b[1m\x1b[32mKubeDesk Log Viewer\x1b[0m                    \x1b[36m│\x1b[0m
-\x1b[36m│\x1b[0m                                                             \x1b[36m│\x1b[0m
-\x1b[36m│\x1b[0m  \x1b[33m📋 Aguardando logs...\x1b[0m                                   \x1b[36m│\x1b[0m
-\x1b[36m│\x1b[0m  \x1b[90mUse a busca acima para filtrar logs\x1b[0m                   \x1b[36m│\x1b[0m
-\x1b[36m╰─────────────────────────────────────────────────────────────╯\x1b[0m
-
-`;
-        this.terminal.write(welcome);
-        this.welcomeMessageShown = true;
     }
     
     addLog(logEntry) {
@@ -169,16 +146,6 @@ class LogViewer {
         const formattedLog = this.formatLogEntry(logEntry);
         this.terminal.write(formattedLog + '\r\n');
         
-        // Scroll automático se estiver seguindo
-        if (this.isFollowing) {
-            this._autoScrolling = true;
-            setTimeout(() => {
-                if (this.terminal && this.isFollowing) {
-                    this.terminal.scrollToBottom();
-                }
-                this._autoScrolling = false;
-            }, 10);
-        }
     }
     
     formatLogEntry(logEntry) {
@@ -276,14 +243,12 @@ class LogViewer {
         if (this.terminal) {
             this.terminal.clear();
             this.logBuffer = [];
-            this.writeWelcomeMessage();
         }
     }
     
     scrollToTop() {
         if (this.terminal) {
             this.terminal.scrollToTop();
-            this.isFollowing = false;
         }
     }
     
@@ -291,20 +256,12 @@ class LogViewer {
         if (this.terminal) {
             this._autoScrolling = true;
             this.terminal.scrollToBottom();
-            this.isFollowing = true;
             setTimeout(() => {
                 this._autoScrolling = false;
             }, 100);
         }
     }
     
-    toggleFollow() {
-        this.isFollowing = !this.isFollowing;
-        if (this.isFollowing) {
-            this.scrollToBottom();
-        }
-        return this.isFollowing;
-    }
     
     exportLogs(format = 'text') {
         if (format === 'json') {
@@ -388,8 +345,7 @@ class LogViewer {
         
         return {
             total: this.logBuffer.length,
-            levels: levels,
-            following: this.isFollowing
+            levels: levels
         };
     }
 }

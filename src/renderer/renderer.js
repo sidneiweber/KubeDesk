@@ -171,7 +171,6 @@ const elements = {
     terminalSearchInput: document.getElementById('terminalSearchInput'),
     searchPrevBtn: document.getElementById('searchPrevBtn'),
     searchNextBtn: document.getElementById('searchNextBtn'),
-    followLogsBtn: document.getElementById('followLogsBtn'),
     scrollTopBtn: document.getElementById('scrollTopBtn'),
     scrollBottomBtn: document.getElementById('scrollBottomBtn'),
 
@@ -254,7 +253,10 @@ elements.backToPodsFromDetailsBtn.addEventListener('click', () => {
 
 elements.viewPodLogsBtn.addEventListener('click', () => {
     if (currentPodName && currentPodNamespace) {
-        switchToPodLogs(currentPodName, currentPodNamespace);
+        // Navegar para a seção de logs
+        switchSection('podLogs');
+        // Inicializar os logs do pod
+        showPodLogs(currentPodName, currentPodNamespace);
     }
 });
 
@@ -343,29 +345,16 @@ elements.searchNextBtn.addEventListener('click', () => {
     }
 });
 
-elements.followLogsBtn.addEventListener('click', () => {
-    if (logViewer) {
-        const following = logViewer.toggleFollow();
-        elements.followLogsBtn.classList.toggle('following', following);
-        elements.followLogsBtn.innerHTML = following
-            ? '<span>📍</span> Seguir'
-            : '<span>📍</span> Parado';
-    }
-});
 
 elements.scrollTopBtn.addEventListener('click', () => {
     if (logViewer) {
         logViewer.scrollToTop();
-        elements.followLogsBtn.classList.remove('following');
-        elements.followLogsBtn.innerHTML = '<span>📍</span> Parado';
     }
 });
 
 elements.scrollBottomBtn.addEventListener('click', () => {
     if (logViewer) {
         logViewer.scrollToBottom();
-        elements.followLogsBtn.classList.add('following');
-        elements.followLogsBtn.innerHTML = '<span>📍</span> Seguir';
     }
 });
 
@@ -1163,7 +1152,7 @@ async function startLogsStreaming() {
         logsPaused = false;
 
         // Atualizar botão de pausa
-        elements.pauseLogsBtn.innerHTML = '<span class="btn-icon">⏸️</span> Pausar';
+        elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
 
         // Mostrar mensagem de aguardando logs
         const waitingEntry = {
@@ -1334,13 +1323,6 @@ function updateLogsStats() {
     elements.logsCount.textContent = `${totalLogs} logs`;
     elements.logsRate.textContent = `${rate}/s`;
 
-    // Atualizar botão de seguir baseado no LogViewer
-    if (logViewer && stats) {
-        elements.followLogsBtn.classList.toggle('following', stats.following);
-        elements.followLogsBtn.innerHTML = stats.following
-            ? '<span>📍</span> Seguir'
-            : '<span>📍</span> Parado';
-    }
 }
 
 function filterLogs() {
@@ -1367,12 +1349,12 @@ function updateLogsDisplay() {
 
 function pauseLogsStreaming() {
     logsPaused = true;
-    elements.pauseLogsBtn.innerHTML = '<span class="btn-icon">▶️</span> Retomar';
+    elements.pauseLogsBtn.innerHTML = '<i class="bi bi-play"></i> Retomar';
 }
 
 function resumeLogsStreaming() {
     logsPaused = false;
-    elements.pauseLogsBtn.innerHTML = '<span class="btn-icon">⏸️</span> Pausar';
+    elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
 }
 
 function stopLogsStreaming() {
@@ -1391,7 +1373,7 @@ function stopLogsStreaming() {
     logsStreaming = false;
     logsPaused = false;
 
-    elements.pauseLogsBtn.innerHTML = '<span class="btn-icon">⏸️</span> Pausar';
+    elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
 
     // Limpar indicador de modo de logs
     const logsModeIndicator = document.getElementById('logsModeIndicator');
@@ -1518,11 +1500,11 @@ function showLogsModeIndicator(mode) {
 
     let icon, text, subtitle;
     if (mode === 'histórico') {
-        icon = '📜';
+        icon = '<i class="bi bi-journal-text"></i>';
         text = 'Modo Histórico';
         subtitle = 'Últimos 5 minutos de logs';
     } else {
-        icon = '⚡';
+        icon = '<i class="bi bi-lightning"></i>';
         text = 'Modo Tempo Real';
         subtitle = 'Streaming ativo';
     }
@@ -2006,12 +1988,12 @@ function updateAutoRefreshButton(enabled) {
         elements.autoRefreshBtn.classList.remove('auto-refresh-disabled');
         elements.autoRefreshBtn.classList.add('auto-refresh-enabled');
         elements.autoRefreshBtn.title = 'Auto-atualização ativa (10s) - Clique para desativar';
-        elements.autoRefreshBtn.innerHTML = '<span class="auto-refresh-icon">⏱️</span> Auto';
+        elements.autoRefreshBtn.innerHTML = '<i class="bi bi-alarm auto-refresh-icon"></i> Auto';
     } else {
         elements.autoRefreshBtn.classList.remove('auto-refresh-enabled');
         elements.autoRefreshBtn.classList.add('auto-refresh-disabled');
         elements.autoRefreshBtn.title = 'Auto-atualização desativada - Clique para ativar';
-        elements.autoRefreshBtn.innerHTML = '<span class="auto-refresh-icon">⏸️</span> Auto';
+        elements.autoRefreshBtn.innerHTML = '<i class="bi bi-pause auto-refresh-icon"></i> Auto';
     }
 }
 

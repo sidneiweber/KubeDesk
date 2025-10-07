@@ -5,8 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KubeDesk</title>
+    <link rel="stylesheet" href="fonts.css">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="xterm.css">
+    <link rel="stylesheet" href="bootstrap-icons.css">
 </head>
 
 <body>
@@ -44,7 +46,7 @@
 
                         <div class="setup-actions">
                             <button id="connectBtn" class="btn-primary" disabled>
-                                <span class="btn-icon">🔗</span>
+                                <i class="bi bi-link"></i>
                                 Conectar ao Cluster
                             </button>
                         </div>
@@ -92,7 +94,10 @@
         <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <h2>KubeDesk</h2>
+                <div class="sidebar-logo">
+                    <img src="../../assets/icon.png" alt="KubeDesk Logo" class="logo-icon">
+                    <h2>KubeDesk</h2>
+                </div>
                 <div class="connection-status" id="mainConnectionStatus">
                     <span class="status-indicator disconnected"></span>
                     <span>Desconectado</span>
@@ -117,7 +122,7 @@
                         <div class="cluster-namespace" id="currentClusterNamespace">-</div>
                     </div>
                     <button id="reconnectBtn" class="btn-secondary">
-                        <span class="btn-icon">🔄</span>
+                        <i class="bi bi-gear-wide-connected"></i>
                         Reconectar
                     </button>
                 </div>
@@ -149,13 +154,13 @@
                         </div>
 
                         <button id="refreshBtn" class="btn-secondary">
-                            <span class="refresh-icon">🔄</span>
+                            <i class="bi bi-arrow-clockwise refresh-icon"></i>
                             Atualizar
                         </button>
 
                         <button id="autoRefreshBtn" class="btn-secondary auto-refresh-enabled"
                             title="Auto-atualização ativa (10s)">
-                            <span class="auto-refresh-icon">⏱️</span>
+                            <i class="bi bi-alarm auto-refresh-icon"></i>
                             Auto
                         </button>
                     </div>
@@ -277,7 +282,7 @@
                                     </div>
                                     <div class="logs-options">
                                         <button id="logsOptionsBtn" class="btn-secondary">
-                                            <span class="btn-icon">⚙️</span>
+                                            <i class="bi bi-gear-wide"></i>
                                             Opções
                                         </button>
                                         <div id="logsOptionsMenu" class="dropdown-menu" style="display: none;">
@@ -333,10 +338,6 @@
                                     <button id="searchPrevBtn" title="Anterior">↑</button>
                                     <button id="searchNextBtn" title="Próximo">↓</button>
                                 </div>
-                                <button id="followLogsBtn" class="logs-follow-btn following">
-                                    <span>📍</span>
-                                    Seguir
-                                </button>
                                 <div class="logs-stats">
                                     <span id="logsCount">0 logs</span>
                                     <span id="logsRate">0/s</span>
@@ -348,19 +349,19 @@
                             <div class="logs-footer">
                                 <div class="logs-actions">
                                     <button id="pauseLogsBtn" class="btn-secondary">
-                                        <span class="btn-icon">⏸️</span>
+                                        <i class="bi bi-pause"></i>
                                         Pausar
                                     </button>
                                     <button id="clearLogsBtn" class="btn-secondary">
-                                        <span class="btn-icon">🗑️</span>
+                                        <i class="bi bi-recycle"></i>
                                         Limpar
                                     </button>
                                     <button id="scrollTopBtn" class="btn-secondary">
-                                        <span class="btn-icon">⬆️</span>
+                                        <i class="bi bi-arrow-up"></i>
                                         Topo
                                     </button>
                                     <button id="scrollBottomBtn" class="btn-secondary">
-                                        <span class="btn-icon">⬇️</span>
+                                        <i class="bi bi-arrow-down"></i>
                                         Final
                                     </button>
                                 </div>
@@ -380,8 +381,8 @@
                             </div>
                             <div class="details-header-right">
                                 <div class="pod-actions">
-                                    <button id="viewPodLogsBtn" class="btn-primary">
-                                        <span class="btn-icon">📋</span>
+                                    <button id="viewPodLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-journal-text"></i>
                                         Ver Logs
                                     </button>
                                 </div>
@@ -429,11 +430,20 @@
                                     </div>
                                 </div>
 
-                                <!-- Labels -->
-                                <div class="details-section">
-                                    <h4>Labels</h4>
-                                    <div id="podLabelsList" class="labels-list">
-                                        <!-- Labels will be populated here -->
+                                <!-- Labels and Annotations Side by Side -->
+                                <div class="details-section-group">
+                                    <div class="details-section">
+                                        <h4>Labels</h4>
+                                        <div id="podLabelsList" class="labels-list">
+                                            <!-- Labels will be populated here -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="details-section">
+                                        <h4>Annotations</h4>
+                                        <div id="podAnnotationsList" class="annotations-list">
+                                            <!-- Annotations will be populated here -->
+                                        </div>
                                     </div>
                                 </div>
 
@@ -442,14 +452,6 @@
                                     <h4>Environment Variables</h4>
                                     <div id="podEnvVarsList" class="env-vars-list">
                                         <!-- Environment variables will be populated here -->
-                                    </div>
-                                </div>
-
-                                <!-- Annotations -->
-                                <div class="details-section">
-                                    <h4>Annotations</h4>
-                                    <div id="podAnnotationsList" class="annotations-list">
-                                        <!-- Annotations will be populated here -->
                                     </div>
                                 </div>
                             </div>
