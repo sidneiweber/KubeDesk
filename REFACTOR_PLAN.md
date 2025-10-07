@@ -34,12 +34,16 @@ src/
 │   │   │   ├── Dashboard.js      # Componente principal
 │   │   │   ├── Header.js         # Header do dashboard
 │   │   │   └── Sidebar.js        # Sidebar de navegação
+│   │   ├── Namespaces/
+│   │   │   └── NamespacesTable.js # Tabela de namespaces
 │   │   ├── Pods/
 │   │   │   ├── PodsTable.js      # Tabela de pods
 │   │   │   ├── PodRow.js         # Linha individual de pod
 │   │   │   └── PodActions.js     # Ações dos pods
+│   │   │   ├── PodDetails.js     # Tela de detalhes do pod
+│   │   │   └── PodMetrics.js     # Componentes de métricas (CPU/Mem)
 │   │   ├── Logs/
-│   │   │   ├── LogViewer.js      # Visualizador de logs
+│   │   │   ├── LogViewer.js      # Visualizador de logs (xterm.js)
 │   │   │   ├── LogControls.js    # Controles de logs
 │   │   │   └── LogToolbar.js     # Toolbar de logs
 │   │   ├── Setup/
@@ -48,11 +52,13 @@ src/
 │   │   └── Common/
 │   │       ├── LoadingSpinner.js # Spinner de loading
 │   │       ├── ErrorMessage.js   # Mensagens de erro
-│   │       └── Toast.js          # Notificações toast
+│   │       ├── Toast.js          # Notificações toast
+│   │       └── Tooltip.js        # Tooltips customizados
 │   ├── services/
 │   │   ├── APIService.js         # Comunicação com main process
 │   │   ├── StateManager.js       # Gerenciamento de estado
 │   │   └── EventBus.js           # Sistema de eventos
+│   │   └── PreferenceService.js   # Gerenciamento de preferências (localStorage)
 │   ├── utils/
 │   │   ├── DOMUtils.js           # Utilitários DOM
 │   │   ├── FormatUtils.js        # Formatação de dados
