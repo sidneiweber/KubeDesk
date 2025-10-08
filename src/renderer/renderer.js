@@ -1,5 +1,7 @@
-const { ipcRenderer } = require('electron');
-const LogViewer = require('./components/LogViewer');
+// Garantir que estamos usando o require do Node.js, não do AMD loader do Monaco
+const nodeRequire = window.nodeRequire || window.require || require;
+const { ipcRenderer } = nodeRequire('electron');
+const LogViewer = nodeRequire('./components/LogViewer');
 
 // Estado da aplicação
 let currentConnectionId = null;
@@ -87,6 +89,9 @@ let logsOptions = {
     timestamp: 'off',
     horizontalScroll: false
 };
+
+// Estado do YAML
+let currentYamlContent = '';
 
 // Configurações de performance
 const MAX_TOTAL_LOGS = 5000; // Máximo de logs mantidos em memória
@@ -184,7 +189,15 @@ const elements = {
     podContainersList: document.getElementById('podContainersList'),
     podLabelsList: document.getElementById('podLabelsList'),
     podEnvVarsList: document.getElementById('podEnvVarsList'),
-    podAnnotationsList: document.getElementById('podAnnotationsList')
+    podAnnotationsList: document.getElementById('podAnnotationsList'),
+
+    // Pod YAML elements
+    podYamlSection: document.getElementById('podYamlSection'),
+    podYamlTitle: document.getElementById('podYamlTitle'),
+    backToPodsFromYamlBtn: document.getElementById('backToPodsFromYamlBtn'),
+    copyYamlBtn: document.getElementById('copyYamlBtn'),
+    downloadYamlBtn: document.getElementById('downloadYamlBtn'),
+    yamlEditor: document.getElementById('yamlEditor')
 };
 
 // Event Listeners
@@ -255,6 +268,19 @@ elements.viewPodLogsBtn.addEventListener('click', () => {
         // Inicializar os logs do pod
         showPodLogs(currentPodName, currentPodNamespace);
     }
+});
+
+// Pod YAML event listeners
+elements.backToPodsFromYamlBtn.addEventListener('click', () => {
+    switchSection('pods');
+});
+
+elements.copyYamlBtn.addEventListener('click', () => {
+    copyYamlToClipboard();
+});
+
+elements.downloadYamlBtn.addEventListener('click', () => {
+    downloadYaml();
 });
 
 elements.logsOptionsBtn.addEventListener('click', (e) => {
@@ -1222,6 +1248,15 @@ function switchSection(section) {
         }
         // Pausar auto-refresh na seção de detalhes
         stopAutoRefresh();
+    } else if (section === 'podYaml') {
+        // Esconder header na seção de YAML
+        elements.dashboardHeader.classList.add('hidden');
+        // Adicionar classe especial ao dashboard-content
+        if (dashboardContent) {
+            dashboardContent.classList.add('logs-active');
+        }
+        // Pausar auto-refresh na seção de YAML
+        stopAutoRefresh();
     } else {
         // Mostrar header nas outras seções
         elements.dashboardHeader.classList.remove('hidden');
@@ -1236,7 +1271,7 @@ function switchSection(section) {
     }
 
     // Carregar dados da nova seção
-    if (currentConnectionId && section !== 'podLogs') {
+    if (currentConnectionId && section !== 'podLogs' && section !== 'podDetails' && section !== 'podYaml') {
         loadCurrentSection();
     }
 
@@ -1246,6 +1281,8 @@ function switchSection(section) {
             logViewer.resize();
         }, 300);
     }
+
+    // Se mudou para seção de YAML, não precisa fazer nada especial
 }
 
 function refreshCurrentSection() {
@@ -1980,6 +2017,9 @@ function handleContextMenuAction(action, data) {
         case 'show-details':
             showPodDetails(data.podName, data.podNamespace);
             break;
+        case 'show-yaml':
+            showPodYaml(data.podName, data.podNamespace);
+            break;
         case 'reload-pod':
             reloadPod(data.podName, data.podNamespace);
             break;
@@ -2055,6 +2095,135 @@ async function showPodDetails(podName, podNamespace) {
 // Função para recarregar pod (placeholder)
 function reloadPod(podName, podNamespace) {
     showError(`Recarregar pod ${podName} em ${podNamespace} - Funcionalidade em desenvolvimento`);
+}
+
+// Função para mostrar YAML do pod
+async function showPodYaml(podName, podNamespace) {
+    try {
+        // Mostrar loading
+        showLoading(true);
+        
+        // Buscar YAML do pod
+        const yamlContent = await ipcRenderer.invoke('get-pod-yaml', currentConnectionId, podName, podNamespace);
+        
+        if (yamlContent) {
+            // Atualizar título
+            elements.podYamlTitle.textContent = `YAML: ${podName}`;
+            
+            // Armazenar conteúdo
+            currentYamlContent = yamlContent;
+            
+            // Atualizar variáveis globais
+            currentPodName = podName;
+            currentPodNamespace = podNamespace;
+            
+            // Mostrar seção de YAML
+            switchSection('podYaml');
+            
+            // Inicializar Monaco Editor
+            initializeYamlEditor(yamlContent);
+        } else {
+            showError('YAML do pod não encontrado');
+        }
+        
+    } catch (error) {
+        console.error('Erro ao carregar YAML do pod:', error);
+        showError('Erro ao carregar YAML do pod: ' + error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Função para inicializar o editor YAML com Prism.js
+function initializeYamlEditor(yamlContent) {
+    // Limpar container
+    elements.yamlEditor.innerHTML = '';
+
+    try {
+        // Criar container principal
+        const editorContainer = document.createElement('div');
+        editorContainer.className = 'yaml-editor-container';
+        
+        // Criar container para números de linha
+        const lineNumbersContainer = document.createElement('div');
+        lineNumbersContainer.className = 'yaml-line-numbers';
+        
+        // Criar container para o código
+        const codeContainer = document.createElement('div');
+        codeContainer.className = 'yaml-code-container';
+        
+        // Criar o pre com code
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        code.className = 'language-yaml';
+        code.textContent = yamlContent;
+        pre.appendChild(code);
+        codeContainer.appendChild(pre);
+        
+        // Gerar números de linha
+        const lines = yamlContent.split('\n');
+        const lineNumbers = document.createElement('div');
+        lineNumbers.className = 'yaml-line-numbers-content';
+        
+        lines.forEach((_, index) => {
+            const lineNumber = document.createElement('div');
+            lineNumber.className = 'yaml-line-number';
+            lineNumber.textContent = index + 1;
+            lineNumbers.appendChild(lineNumber);
+        });
+        
+        lineNumbersContainer.appendChild(lineNumbers);
+        
+        // Adicionar containers ao editor
+        editorContainer.appendChild(lineNumbersContainer);
+        editorContainer.appendChild(codeContainer);
+        elements.yamlEditor.appendChild(editorContainer);
+        
+        // Aplicar syntax highlighting com Prism
+        if (typeof Prism !== 'undefined') {
+            Prism.highlightElement(code);
+        }
+        
+    } catch (error) {
+        console.error('Erro ao criar editor YAML:', error);
+        elements.yamlEditor.innerHTML = '<div style="padding: 20px; color: #f14c4c;">Erro ao criar editor: ' + error.message + '</div>';
+    }
+}
+
+// Função para copiar YAML para área de transferência
+function copyYamlToClipboard() {
+    if (!currentYamlContent) {
+        showError('Nenhum YAML para copiar');
+        return;
+    }
+
+    navigator.clipboard.writeText(currentYamlContent).then(() => {
+        showToast('YAML copiado para a área de transferência', 'success');
+    }).catch(err => {
+        showError('Erro ao copiar YAML: ' + err.message);
+    });
+}
+
+// Função para baixar YAML
+function downloadYaml() {
+    if (!currentYamlContent) {
+        showError('Nenhum YAML para baixar');
+        return;
+    }
+
+    const filename = `pod-${currentPodName}-${currentPodNamespace}.yaml`;
+    const blob = new Blob([currentYamlContent], { type: 'text/yaml' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast('YAML baixado com sucesso', 'success');
 }
 
 // Função para calcular uso de recursos (baseado em limits com fallback para requests)

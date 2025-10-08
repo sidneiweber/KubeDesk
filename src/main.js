@@ -753,6 +753,37 @@ function formatMemoryIntelligently(bytes) {
 }
 
 
+// Handler para buscar YAML do pod
+ipcMain.handle('get-pod-yaml', async (event, connectionId, podName, namespace) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+    const response = await k8sApi.readNamespacedPod(podName, namespace);
+
+    // Remover managedFields do metadata para uma visualização mais limpa
+    const podData = JSON.parse(JSON.stringify(response.body));
+    if (podData.metadata && podData.metadata.managedFields) {
+      delete podData.metadata.managedFields;
+    }
+
+    // Converter o objeto do pod para YAML
+    const podYaml = yaml.dump(podData, {
+      indent: 2,
+      lineWidth: -1,
+      noRefs: true,
+      sortKeys: false
+    });
+
+    return podYaml;
+  } catch (error) {
+    throw new Error(`Erro ao buscar YAML do pod: ${error.message}`);
+  }
+});
+
 // Handler para mostrar menu de contexto
 ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
   const template = [
@@ -773,6 +804,12 @@ ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
       label: '📊 Detalhes do Pod',
       click: () => {
         event.sender.send('context-menu-action', 'show-details', { podName, podNamespace });
+      }
+    },
+    {
+      label: '📄 YAML',
+      click: () => {
+        event.sender.send('context-menu-action', 'show-yaml', { podName, podNamespace });
       }
     },
     {
