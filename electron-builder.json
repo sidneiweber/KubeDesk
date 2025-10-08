@@ -44,8 +44,16 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "assets/icon.png",
-    "category": "Development"
+    "icon": "assets/icon-square.png",
+    "category": "Development",
+    "executableName": "kubedesk",
+    "maintainer": "Sidnei",
+    "desktop": {
+      "Name": "KubeDesk",
+      "Comment": "Kubernetes Management Tool",
+      "Icon": "kubedesk",
+      "Categories": "Development;System;"
+    }
   },
   "nsis": {
     "oneClick": false,
