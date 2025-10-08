@@ -764,8 +764,14 @@ ipcMain.handle('get-pod-yaml', async (event, connectionId, podName, namespace) =
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
     const response = await k8sApi.readNamespacedPod(podName, namespace);
 
+    // Remover managedFields do metadata para uma visualização mais limpa
+    const podData = JSON.parse(JSON.stringify(response.body));
+    if (podData.metadata && podData.metadata.managedFields) {
+      delete podData.metadata.managedFields;
+    }
+
     // Converter o objeto do pod para YAML
-    const podYaml = yaml.dump(response.body, {
+    const podYaml = yaml.dump(podData, {
       indent: 2,
       lineWidth: -1,
       noRefs: true,
