@@ -9,6 +9,10 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="xterm.css">
     <link rel="stylesheet" href="bootstrap-icons.css">
+    <!-- Prism.js para syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
 </head>
 
 <body>
@@ -451,6 +455,37 @@
                                         <!-- Environment variables will be populated here -->
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pod YAML Section -->
+                    <div id="podYamlSection" class="content-section">
+                        <div class="section-header">
+                            <div class="yaml-header-left">
+                                <button id="backToPodsFromYamlBtn" class="btn-secondary">
+                                    <span class="btn-icon">←</span>
+                                    Voltar aos Pods
+                                </button>
+                                <h3 id="podYamlTitle">YAML do Pod</h3>
+                            </div>
+                            <div class="yaml-header-right">
+                                <div class="yaml-actions">
+                                    <button id="copyYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copiar YAML
+                                    </button>
+                                    <button id="downloadYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-download"></i>
+                                        Baixar YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="yaml-container">
+                            <div id="yamlEditor" class="yaml-editor">
+                                <!-- Monaco Editor will be initialized here -->
                             </div>
                         </div>
                     </div>
