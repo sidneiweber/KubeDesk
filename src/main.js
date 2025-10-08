@@ -43,7 +43,7 @@ function createWindow() {
 app.whenReady().then(() => {
   // Configurar ícone da aplicação para o sistema
   if (process.platform === 'linux') {
-    app.setAppUserModelId('kubernetes-tool');
+    app.setAppUserModelId('kubedesk');
   }
 
   createWindow();
