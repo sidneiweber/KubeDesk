@@ -1028,6 +1028,10 @@ body {
     position: relative;
 }
 
+.pod-name:hover {
+    color: #4a9eff;
+}
+
 .pod-namespace {
     font-size: 0.9rem;
 }
@@ -1943,7 +1947,329 @@ oast notification styles */
 
 .dashboard-header.hidden ~ .dashboard-content #podLogsSection {
     height: calc(100vh - 40px);
-}/* Pod
+}
+
+/* ============================================================================
+   DEPLOYMENTS STYLES
+   ============================================================================ */
+
+/* Deployments table styles */
+.deployments-table {
+    width: 100%;
+    border-collapse: collapse;
+    display: table;
+}
+
+.deployments-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.deployments-table tbody {
+    display: table-row-group;
+}
+
+.deployments-table th {
+    background-color: #404040;
+    color: #e5e5e5;
+    padding: 12px 15px;
+    text-align: left;
+    font-weight: 500;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #555;
+}
+
+.deployments-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #404040;
+    color: #fff;
+    font-size: 0.9rem;
+}
+
+.deployments-table tbody tr:hover {
+    background-color: #353535;
+    cursor: pointer;
+}
+
+.deployment-name {
+    font-weight: 500;
+    color: #e5e5e5;
+    cursor: context-menu;
+}
+
+.deployment-name:hover {
+    color: #4a9eff;
+}
+
+.deployment-images {
+    max-width: 300px;
+}
+
+.container-image {
+    font-size: 0.8rem;
+    color: #93c5fd;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+
+.deployment-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.yaml-btn {
+    color: #a78bfa !important;
+}
+
+.yaml-btn:hover {
+    background-color: #7c3aed !important;
+    border-color: #7c3aed !important;
+    color: white !important;
+}
+
+/* Deployment details specific styles */
+#deploymentsSection {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    flex: 1;
+}
+
+#deploymentsSection .section-header {
+    flex-shrink: 0;
+}
+
+#deploymentsSection .table-container {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    height: 100%;
+}
+
+#deploymentDetailsSection {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    background: #1e1e1e;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#deploymentDetailsSection.active {
+    display: flex;
+    flex: 1;
+    z-index: 1000;
+}
+
+.condition-item {
+    background: #1e1e1e;
+    border: 1px solid #404040;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.condition-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.condition-type {
+    font-weight: 600;
+    color: #ffffff;
+    font-size: 14px;
+}
+
+.condition-status {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.condition-reason {
+    color: #e5e5e5;
+    font-size: 12px;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.condition-message {
+    color: #a3a3a3;
+    font-size: 11px;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.condition-time {
+    color: #666;
+    font-size: 10px;
+    font-style: italic;
+}
+
+.conditions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.port-item {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.port-name {
+    color: #4fc3f7;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.port-value {
+    color: #ffffff;
+    font-size: 12px;
+}
+
+.ports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.resources-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.resource-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.resource-group label {
+    color: #b0b0b0;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.resource-values {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.resource-values div {
+    color: #ffffff;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
+}
+
+.full-width {
+    grid-column: 1 / -1;
+}
+
+.container-image-full {
+    color: #93c5fd;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.uid-text {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    color: #666;
+}
+
+.no-data-text {
+    color: #666;
+    font-style: italic;
+    font-size: 12px;
+}
+
+/* YAML Section styles */
+#deploymentYAMLSection {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    background: #1e1e1e;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#deploymentYAMLSection.active {
+    display: flex;
+    flex: 1;
+    z-index: 1000;
+}
+
+.yaml-container {
+    flex: 1;
+    overflow: auto;
+    background: #1e1e1e;
+}
+
+.yaml-editor {
+    padding: 20px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #e6edf3;
+    white-space: pre;
+    overflow: auto;
+}
+
+.yaml-header-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.yaml-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.yaml-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Deployment Logs Section */
+#deploymentLogsSection {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    background: #1e1e1e;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#deploymentLogsSection.active {
+    display: flex;
+    flex: 1;
+    z-index: 1000;
+}
+
+/* ============================================================================
+   END DEPLOYMENTS STYLES
+   ============================================================================ */
+
+/* Pod
 s section specific styles */
 #podsSection {
     display: flex;
@@ -2707,4 +3033,144 @@ s section specific styles */
 #podYamlSection .yaml-container {
     flex: 1;
     min-height: 0;
+}
+
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 10000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal.show {
+    display: flex;
+}
+
+.modal-content {
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #3a3a3a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    color: #e5e5e5;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.modal-close:hover {
+    background-color: #3a3a3a;
+    color: #fff;
+}
+
+.modal-body {
+    padding: 24px;
+}
+
+.modal-body p {
+    margin: 8px 0;
+    color: #c5c5c5;
+}
+
+.modal-body strong {
+    color: #e5e5e5;
+}
+
+.form-group {
+    margin-top: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #e5e5e5;
+    font-weight: 500;
+}
+
+.form-input {
+    width: 100%;
+    padding: 10px 12px;
+    background-color: #1e1e1e;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #e5e5e5;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #4a9eff;
+}
+
+.modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #3a3a3a;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.btn-primary {
+    background-color: #4a9eff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+    background-color: #3a8eef;
+}
+
+.btn-primary:active {
+    background-color: #2a7edf;
 }

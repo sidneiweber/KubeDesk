@@ -6,6 +6,7 @@ const k8s = require('@kubernetes/client-node');
 const yaml = require('js-yaml');
 const stream = require('stream');
 const LogService = require('./main/services/LogService');
+const DeploymentService = require('./main/services/DeploymentService');
 
 let mainWindow;
 
@@ -784,7 +785,105 @@ ipcMain.handle('get-pod-yaml', async (event, connectionId, podName, namespace) =
   }
 });
 
-// Handler para mostrar menu de contexto
+// ============================================================================
+// DEPLOYMENT HANDLERS
+// ============================================================================
+
+// Handler para listar deployments
+ipcMain.handle('get-deployments', async (event, connectionId, namespace = 'default') => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    return await DeploymentService.listDeployments(kc, namespace);
+  } catch (error) {
+    console.error('Erro ao buscar deployments:', error);
+    throw new Error(`Erro ao buscar deployments: ${error.message}`);
+  }
+});
+
+// Handler para obter detalhes de um deployment
+ipcMain.handle('get-deployment-details', async (event, connectionId, name, namespace) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    return await DeploymentService.getDeploymentDetails(kc, name, namespace);
+  } catch (error) {
+    console.error('Erro ao buscar detalhes do deployment:', error);
+    throw new Error(`Erro ao buscar detalhes do deployment: ${error.message}`);
+  }
+});
+
+// Handler para obter YAML de um deployment
+ipcMain.handle('get-deployment-yaml', async (event, connectionId, name, namespace) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    return await DeploymentService.getDeploymentYAML(kc, name, namespace);
+  } catch (error) {
+    console.error('Erro ao buscar YAML do deployment:', error);
+    throw new Error(`Erro ao buscar YAML do deployment: ${error.message}`);
+  }
+});
+
+// Handler para obter pods de um deployment
+ipcMain.handle('get-deployment-pods', async (event, connectionId, deploymentName, namespace) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    return await DeploymentService.getDeploymentPods(kc, deploymentName, namespace);
+  } catch (error) {
+    console.error('Erro ao buscar pods do deployment:', error);
+    throw new Error(`Erro ao buscar pods do deployment: ${error.message}`);
+  }
+});
+
+// Handler para escalar um deployment
+ipcMain.handle('scale-deployment', async (event, connectionId, name, namespace, replicas) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    return await DeploymentService.scaleDeployment(kc, name, namespace, replicas);
+  } catch (error) {
+    console.error('Erro ao escalar deployment:', error);
+    throw new Error(`Erro ao escalar deployment: ${error.message}`);
+  }
+});
+
+// Handler para reiniciar um deployment
+ipcMain.handle('restart-deployment', async (event, connectionId, name, namespace) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    return await DeploymentService.restartDeployment(kc, name, namespace);
+  } catch (error) {
+    console.error('Erro ao reiniciar deployment:', error);
+    throw new Error(`Erro ao reiniciar deployment: ${error.message}`);
+  }
+});
+
+// ============================================================================
+// END DEPLOYMENT HANDLERS
+// ============================================================================
+
+// Handler para mostrar menu de contexto de pods
 ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
   const template = [
     {
@@ -819,6 +918,55 @@ ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
       label: '🔄 Recarregar Pod',
       click: () => {
         event.sender.send('context-menu-action', 'reload-pod', { podName, podNamespace });
+      }
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  menu.popup();
+});
+
+// Handler para mostrar menu de contexto de deployments
+ipcMain.handle('show-deployment-context-menu', async (event, deploymentName, deploymentNamespace) => {
+  const template = [
+    {
+      label: `Deployment: ${deploymentName}`,
+      enabled: false
+    },
+    {
+      type: 'separator'
+    },
+    {
+      label: '📋 Ver Logs',
+      click: () => {
+        event.sender.send('deployment-context-menu-action', 'show-logs', { deploymentName, deploymentNamespace });
+      }
+    },
+    {
+      label: '📊 Detalhes',
+      click: () => {
+        event.sender.send('deployment-context-menu-action', 'show-details', { deploymentName, deploymentNamespace });
+      }
+    },
+    {
+      label: '📄 YAML',
+      click: () => {
+        event.sender.send('deployment-context-menu-action', 'show-yaml', { deploymentName, deploymentNamespace });
+      }
+    },
+    {
+      type: 'separator'
+    },
+    {
+      label: '🔄 Reiniciar Deployment',
+      click: () => {
+        event.sender.send('deployment-context-menu-action', 'restart-deployment', { deploymentName, deploymentNamespace });
+      }
+    },
+    {
+      label: '📏 Escalar Deployment',
+      click: () => {
+        event.sender.send('deployment-context-menu-action', 'scale-deployment', { deploymentName, deploymentNamespace });
       }
     }
   ];

@@ -156,6 +156,13 @@ class LogViewer {
         // Colorir timestamp
         const coloredTimestamp = `\x1b[90m${timestamp}\x1b[0m`;
         
+        // Adicionar identificador do pod (últimos 5 caracteres) se disponível
+        let podIdentifier = '';
+        if (logEntry.podName && logEntry.podName.length > 5) {
+            const podSuffix = logEntry.podName.slice(-5);
+            podIdentifier = ` \x1b[36m[${podSuffix}]\x1b[0m`;
+        }
+        
         // Colorir nível com padding fixo
         const levelText = `${levelInfo.icon} ${level.toUpperCase()}`;
         const coloredLevel = `${levelInfo.color}${levelText.padEnd(12)}\x1b[0m`;
@@ -171,7 +178,7 @@ class LogViewer {
             coloredMessage = `${levelInfo.color}${coloredMessage}\x1b[0m`;
         }
         
-        return `${coloredTimestamp} ${coloredLevel} ${coloredMessage}`;
+        return `${coloredTimestamp}${podIdentifier} ${coloredLevel} ${coloredMessage}`;
     }
     
     formatTimestamp(timestamp) {
