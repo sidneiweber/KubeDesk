@@ -144,7 +144,12 @@
                         <span class="separator">></span>
                         <span id="currentSection">Pods</span>
                         <span class="separator">></span>
-                        <span id="podsCount">0 pods</span>
+                        <span id="currentSectionCount">0 pods</span>
+                        <!-- Contadores ocultos para sincronização -->
+                        <span id="podsCount" style="display: none;">0 pods</span>
+                        <span id="deploymentsCount" style="display: none;">0 deployments</span>
+                        <span id="servicesCount" style="display: none;">0 services</span>
+                        <span id="namespacesCount" style="display: none;">0 namespaces</span>
                     </div>
 
                     <div class="dashboard-controls">
@@ -215,14 +220,26 @@
 
                     <!-- Deployments Section -->
                     <div id="deploymentsSection" class="content-section">
-                        <div class="section-header">
-                            <h2>Deployments</h2>
-                            <div class="section-stats">
-                                <span id="deploymentsCount">0 deployments</span>
-                            </div>
-                        </div>
-                        <div class="placeholder">
-                            <p>Seção de Deployments em desenvolvimento</p>
+
+
+                        <div class="table-container">
+                            <table class="deployments-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Ready</th>
+                                        <th>Up-to-date</th>
+                                        <th>Available</th>
+                                        <th>Age</th>
+                                        <th>Images</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deploymentsTableBody">
+                                    <!-- Deployments will be populated here -->
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -489,11 +506,159 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Deployment Details Section -->
+                    <div id="deploymentDetailsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="details-header-left">
+                                <button id="backToDeploymentsBtn" class="btn-secondary">
+                                    <span class="btn-icon">←</span>
+                                    Voltar aos Deployments
+                                </button>
+                                <h3 id="deploymentDetailsTitle">Detalhes do Deployment</h3>
+                            </div>
+                            <div class="details-header-right">
+                                <div class="deployment-actions">
+                                    <button id="viewDeploymentLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-journal-text"></i>
+                                        Ver Logs
+                                    </button>
+                                    <button id="viewDeploymentYAMLBtn" class="btn-secondary">
+                                        <i class="bi bi-file-earmark-code"></i>
+                                        Ver YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="deploymentDetailsContainer" class="pod-details-container">
+                            <!-- Deployment details will be populated here by DeploymentDetails component -->
+                        </div>
+                    </div>
+
+                    <!-- Deployment YAML Section -->
+                    <div id="deploymentYAMLSection" class="content-section">
+                        <div class="section-header">
+                            <div class="yaml-header-left">
+                                <button id="backToDeploymentDetailsBtn" class="btn-secondary">
+                                    <span class="btn-icon">←</span>
+                                    Voltar aos Detalhes
+                                </button>
+                                <h3 id="deploymentYAMLTitle">YAML do Deployment</h3>
+                            </div>
+                            <div class="yaml-header-right">
+                                <div class="yaml-actions">
+                                    <button id="copyDeploymentYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copiar YAML
+                                    </button>
+                                    <button id="downloadDeploymentYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-download"></i>
+                                        Baixar YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="deploymentYAMLContainer" class="yaml-container">
+                            <div id="deploymentYamlEditor" class="yaml-editor">
+                                <!-- Deployment YAML will be displayed here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Deployment Logs Section (agregado de todos os pods) -->
+                    <div id="deploymentLogsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="logs-header-left">
+                                <button id="backToDeploymentsFromLogsBtn" class="btn-secondary">
+                                    <span class="btn-icon">←</span>
+                                    Voltar aos Deployments
+                                </button>
+                                <h3 id="deploymentLogsTitle">Logs do Deployment</h3>
+                            </div>
+                            <div class="logs-header-right">
+                                <div class="logs-controls">
+                                    <div class="logs-options">
+                                        <button id="deploymentLogsOptionsBtn" class="btn-secondary">
+                                            <i class="bi bi-gear-wide"></i>
+                                            Opções
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="logs-container">
+                            <div class="logs-toolbar">
+                                <div class="logs-search-box">
+                                    <input type="text" id="deploymentLogsSearchInput" placeholder="Buscar nos logs..." />
+                                    <button id="deploymentSearchPrevBtn" title="Anterior">↑</button>
+                                    <button id="deploymentSearchNextBtn" title="Próximo">↓</button>
+                                </div>
+                                <div class="logs-stats">
+                                    <span id="deploymentLogsCount">0 logs</span>
+                                    <span id="deploymentPodsCount">0 pods</span>
+                                </div>
+                            </div>
+                            <div id="deploymentLogsContent" class="logs-content">
+                                <!-- Terminal will be initialized here -->
+                            </div>
+                            <div class="logs-footer">
+                                <div class="logs-actions">
+                                    <button id="pauseDeploymentLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-pause"></i>
+                                        Pausar
+                                    </button>
+                                    <button id="clearDeploymentLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-recycle"></i>
+                                        Limpar
+                                    </button>
+                                    <button id="scrollDeploymentLogsTopBtn" class="btn-secondary">
+                                        <i class="bi bi-arrow-up"></i>
+                                        Topo
+                                    </button>
+                                    <button id="scrollDeploymentLogsBottomBtn" class="btn-secondary">
+                                        <i class="bi bi-arrow-down"></i>
+                                        Final
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Modal para escalar deployment -->
+    <div id="scaleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Escalar Deployment</h3>
+                <button class="modal-close" id="scaleModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Deployment:</strong> <span id="scaleDeploymentName"></span></p>
+                <p><strong>Namespace:</strong> <span id="scaleDeploymentNamespace"></span></p>
+                <p><strong>Réplicas atuais:</strong> <span id="scaleCurrentReplicas"></span></p>
+                
+                <div class="form-group">
+                    <label for="scaleNewReplicas">Novo número de réplicas:</label>
+                    <input type="number" id="scaleNewReplicas" min="0" class="form-input" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="scaleCancelBtn" class="btn-secondary">Cancelar</button>
+                <button id="scaleConfirmBtn" class="btn-primary">Escalar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Component Scripts -->
+    <script src="components/Deployments/DeploymentsTable.js"></script>
+    <script src="components/Deployments/DeploymentDetails.js"></script>
+    <script src="components/Deployments/DeploymentYAMLViewer.js"></script>
     <script src="renderer.js"></script>
 </body>
 

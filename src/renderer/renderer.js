@@ -77,6 +77,9 @@ let autoRefreshEnabled = true;
 // Estado dos logs
 let currentPodName = null;
 let currentPodNamespace = null;
+let currentDeploymentName = null;
+let currentDeploymentNamespace = null;
+let currentDeploymentPods = [];
 let logsStreaming = false;
 let logsPaused = false;
 let logsData = [];
@@ -92,6 +95,7 @@ let logsOptions = {
 
 // Estado do YAML
 let currentYamlContent = '';
+let currentDeploymentYamlContent = '';
 
 // Configurações de performance
 const MAX_TOTAL_LOGS = 5000; // Máximo de logs mantidos em memória
@@ -125,6 +129,7 @@ const elements = {
     dashboardHeader: document.querySelector('.dashboard-header'),
     currentContextSpan: document.getElementById('currentContext'),
     currentSectionSpan: document.getElementById('currentSection'),
+    currentSectionCount: document.getElementById('currentSectionCount'),
     namespaceSelect: document.getElementById('namespaceSelect'),
     searchInput: document.getElementById('searchInput'),
     refreshBtn: document.getElementById('refreshBtn'),
@@ -145,10 +150,13 @@ const elements = {
 
     // Tabelas
     podsTableBody: document.getElementById('podsTableBody'),
+    deploymentsTableBody: document.getElementById('deploymentsTableBody'),
     namespacesTableBody: document.getElementById('namespacesTableBody'),
 
     // Contadores
     podsCount: document.getElementById('podsCount'),
+    deploymentsCount: document.getElementById('deploymentsCount'),
+    servicesCount: document.getElementById('servicesCount'),
     namespacesCount: document.getElementById('namespacesCount'),
 
     // Logs
@@ -246,7 +254,24 @@ elements.namespaceSelect.addEventListener('change', () => {
 // Logs event listeners
 elements.backToPodsBtn.addEventListener('click', () => {
     stopLogsStreaming();
-    switchSection('pods');
+    
+    // Verificar se estamos vindo de um deployment ou pod individual
+    const wasDeploymentMode = currentDeploymentName && currentDeploymentPods.length > 0;
+    
+    // Limpar variáveis
+    currentDeploymentName = null;
+    currentDeploymentNamespace = null;
+    currentDeploymentPods = [];
+    currentPodName = null;
+    currentPodNamespace = null;
+    
+    // Voltar para a seção apropriada
+    // switchSection() já chama loadCurrentSection() automaticamente
+    if (wasDeploymentMode) {
+        switchSection('deployments');
+    } else {
+        switchSection('pods');
+    }
 });
 
 elements.containerSelect.addEventListener('change', async () => {
@@ -339,6 +364,22 @@ elements.downloadTextBtn.addEventListener('click', () => downloadLogs('text'));
 elements.copyCsvBtn.addEventListener('click', () => copyLogs('csv'));
 elements.copyTextBtn.addEventListener('click', () => copyLogs('text'));
 
+// Event listener para mudança de container (reiniciar streaming)
+if (elements.containerSelect) {
+    elements.containerSelect.addEventListener('change', () => {
+        if (logsStreaming) {
+            // Se estamos vendo logs de um deployment
+            if (currentDeploymentName && currentDeploymentPods.length > 0) {
+                startDeploymentLogsStreaming(currentDeploymentName, currentDeploymentNamespace, currentDeploymentPods);
+            }
+            // Se estamos vendo logs de um pod individual
+            else if (currentPodName) {
+                startLogsStreaming();
+            }
+        }
+    });
+}
+
 // Enhanced terminal controls
 elements.terminalSearchInput.addEventListener('input', (e) => {
     if (logViewer) {
@@ -388,22 +429,41 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Listener para ações do menu de contexto
+// Listener para ações do menu de contexto de pods
 ipcRenderer.on('context-menu-action', (event, action, data) => {
     handleContextMenuAction(action, data);
 });
 
-// Listeners para streaming de logs
-ipcRenderer.on('log-stream-data', (event, { streamId, log }) => {
-    if (streamId !== currentLogStreamId || !logsStreaming || logsPaused) return;
+// Listener para ações do menu de contexto de deployments
+ipcRenderer.on('deployment-context-menu-action', (event, action, data) => {
+    handleDeploymentContextMenuAction(action, data);
+});
 
-    // Remover mensagem de "aguardando" quando os primeiros logs reais chegarem
-    const waitingMessage = logsData.find(log => log.id === 'waiting-logs');
-    if (waitingMessage) {
-        logsData = logsData.filter(log => log.id !== 'waiting-logs');
+// Listeners para streaming de logs
+ipcRenderer.on('log-stream-data', (event, { streamId, podName, log }) => {
+    // Para deployments, aceitar qualquer streamId se estivermos em modo deployment
+    const isDeploymentMode = currentDeploymentName && currentDeploymentPods.length > 0;
+    if (!logsStreaming || logsPaused) return;
+    if (!isDeploymentMode && streamId !== currentLogStreamId) return;
+
+    // Remover mensagens de "aguardando" quando os primeiros logs reais chegarem
+    const hadWaitingMessages = logsData.some(log => 
+        log.id === 'waiting-logs' || 
+        log.id === 'waiting-deployment-logs' ||
+        log.id === 'start-deployment-logs' ||
+        log.id === 'streaming-ready'
+    );
+    
+    if (hadWaitingMessages) {
+        logsData = logsData.filter(log => 
+            log.id !== 'waiting-logs' && 
+            log.id !== 'waiting-deployment-logs' &&
+            log.id !== 'start-deployment-logs' &&
+            log.id !== 'streaming-ready'
+        );
         if (logViewer) {
             logViewer.clear();
-            // Re-adicionar todos os logs exceto a mensagem de aguardando
+            // Re-adicionar todos os logs exceto as mensagens de aguardando
             logsData.forEach(log => logViewer.addLog(log));
         }
     }
@@ -434,7 +494,7 @@ ipcRenderer.on('log-stream-data', (event, { streamId, log }) => {
             level: 'info',
             message: message,
             raw: line,
-            podName: currentPodName
+            podName: podName || currentPodName  // Usar podName do backend se disponível, senão currentPodName
         };
 
         if (message.toLowerCase().includes('error') || message.toLowerCase().includes('fatal')) {
@@ -453,7 +513,8 @@ ipcRenderer.on('log-stream-data', (event, { streamId, log }) => {
 });
 
 ipcRenderer.on('log-stream-error', (event, { streamId, message }) => {
-    if (streamId !== currentLogStreamId) return;
+    const isDeploymentMode = currentDeploymentName && currentDeploymentPods.length > 0;
+    if (!isDeploymentMode && streamId !== currentLogStreamId) return;
     console.error(`Log stream error for ${streamId}:`, message);
     const errorEntry = {
         id: 'stream-error',
@@ -467,7 +528,8 @@ ipcRenderer.on('log-stream-error', (event, { streamId, message }) => {
 });
 
 ipcRenderer.on('log-stream-end', (event, { streamId }) => {
-    if (streamId !== currentLogStreamId) return;
+    const isDeploymentMode = currentDeploymentName && currentDeploymentPods.length > 0;
+    if (!isDeploymentMode && streamId !== currentLogStreamId) return;
     const endEntry = {
         id: 'stream-end',
         timestamp: new Date().toISOString(),
@@ -710,6 +772,297 @@ function populateNamespacesTable(namespaces) {
     });
 }
 
+async function loadDeployments() {
+    try {
+        const namespace = elements.namespaceSelect.value;
+        const deployments = await ipcRenderer.invoke('get-deployments', currentConnectionId, namespace);
+
+        // Filtrar deployments se necessário
+        const searchTerm = elements.searchInput.value.toLowerCase().trim();
+        let filteredDeployments = deployments;
+
+        if (searchTerm) {
+            filteredDeployments = deployments.filter(deployment =>
+                deployment.name.toLowerCase().includes(searchTerm) ||
+                deployment.namespace.toLowerCase().includes(searchTerm) ||
+                deployment.strategy.toLowerCase().includes(searchTerm)
+            );
+        }
+
+        // Limpar tabela
+        elements.deploymentsTableBody.innerHTML = '';
+
+        // Verificar se há deployments para exibir
+        if (filteredDeployments.length === 0) {
+            const message = searchTerm
+                ? 'Nenhum deployment encontrado com o termo de busca'
+                : (elements.namespaceSelect.value === 'all'
+                    ? 'Nenhum deployment encontrado em nenhum namespace'
+                    : `Nenhum deployment encontrado no namespace "${elements.namespaceSelect.value}"`);
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="9" class="no-data">
+                    <div class="no-data-message">
+                        <span class="no-data-icon">🚀</span>
+                        <p>${message}</p>
+                    </div>
+                </td>
+            `;
+            elements.deploymentsTableBody.appendChild(row);
+            elements.deploymentsCount.textContent = `0 deployments`;
+            return;
+        }
+
+        // Adicionar deployments à tabela
+        filteredDeployments.forEach(deployment => {
+            const row = document.createElement('tr');
+            row.dataset.deploymentName = deployment.name;
+            row.dataset.deploymentNamespace = deployment.namespace;
+
+            // Determinar status baseado nas réplicas
+            const statusClass = deployment.readyReplicas === deployment.replicas && deployment.replicas > 0 
+                ? 'running' 
+                : (deployment.readyReplicas > 0 ? 'pending' : 'failed');
+            const statusText = deployment.readyReplicas === deployment.replicas && deployment.replicas > 0
+                ? 'Ready'
+                : (deployment.readyReplicas > 0 ? 'Progressing' : 'Unavailable');
+
+            // Namespace badge se visualizando todos os namespaces
+            const namespaceDisplay = elements.namespaceSelect.value === 'all'
+                ? `<span class="namespace-badge">${deployment.namespace}</span>`
+                : deployment.namespace;
+
+            // Imagens dos containers
+            const images = deployment.containerImages
+                .map(c => `<div class="container-image" title="${c.name}: ${c.image}">${c.image}</div>`)
+                .join('');
+
+            row.innerHTML = `
+                <td class="deployment-name">${deployment.name}</td>
+                <td class="deployment-namespace">${namespaceDisplay}</td>
+                <td><span class="status-${statusClass}">${statusText}</span></td>
+                <td>
+                    <span class="${deployment.readyReplicas === deployment.replicas ? 'ready-ready' : 'ready-not-ready'}">
+                        ${deployment.ready}
+                    </span>
+                </td>
+                <td>${deployment.upToDate}</td>
+                <td>${deployment.available}</td>
+                <td>${deployment.age}</td>
+                <td class="deployment-images">${images || '-'}</td>
+            `;
+            elements.deploymentsTableBody.appendChild(row);
+        });
+
+        // Adicionar event listeners aos botões
+        elements.deploymentsTableBody.querySelectorAll('.logs-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const row = btn.closest('tr');
+                const name = row.dataset.deploymentName;
+                const namespace = row.dataset.deploymentNamespace;
+                console.log(`Ver logs do deployment: ${name} no namespace: ${namespace}`);
+                showToast(`Funcionalidade de logs em desenvolvimento`, 'info');
+            });
+        });
+
+        elements.deploymentsTableBody.querySelectorAll('.details-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const row = btn.closest('tr');
+                const name = row.dataset.deploymentName;
+                const namespace = row.dataset.deploymentNamespace;
+                showToast(`Funcionalidade de detalhes em desenvolvimento`, 'info');
+            });
+        });
+
+        elements.deploymentsTableBody.querySelectorAll('.yaml-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const row = btn.closest('tr');
+                const name = row.dataset.deploymentName;
+                const namespace = row.dataset.deploymentNamespace;
+                await showDeploymentYAML(name, namespace);
+            });
+        });
+
+        // Adicionar event listeners para menu de contexto nos nomes dos deployments
+        elements.deploymentsTableBody.querySelectorAll('.deployment-name').forEach(cell => {
+            cell.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const row = cell.closest('tr');
+                const name = row.dataset.deploymentName;
+                const namespace = row.dataset.deploymentNamespace;
+                showDeploymentContextMenu(name, namespace);
+            });
+        });
+
+        // Atualizar contador
+        elements.deploymentsCount.textContent = `${filteredDeployments.length} deployment${filteredDeployments.length !== 1 ? 's' : ''}`;
+        
+        // Atualizar breadcrumb se estivermos na seção de deployments
+        if (currentSection === 'deployments') {
+            updateBreadcrumbCount('deployments');
+        }
+
+    } catch (error) {
+        console.error('Erro ao carregar deployments:', error);
+        throw error;
+    }
+}
+
+async function showDeploymentYAML(name, namespace) {
+    try {
+        showLoading(true);
+        
+        // Buscar YAML do deployment
+        const yaml = await ipcRenderer.invoke('get-deployment-yaml', currentConnectionId, name, namespace);
+        
+        if (!yaml) {
+            showToast('Não foi possível obter o YAML do deployment', 'error');
+            return;
+        }
+        
+        // Atualizar título
+        const yamlTitle = document.getElementById('deploymentYAMLTitle');
+        if (yamlTitle) {
+            yamlTitle.textContent = `YAML: ${name} (${namespace})`;
+        }
+        
+        // Armazenar conteúdo para botões
+        currentDeploymentYamlContent = yaml;
+        
+        // Mudar para a seção de YAML
+        switchSection('deploymentYAML');
+        
+        // Inicializar editor YAML
+        initializeDeploymentYamlEditor(yaml);
+        
+        // Configurar botões
+        setupDeploymentYAMLButtons(name, namespace, yaml);
+        
+        showLoading(false);
+    } catch (error) {
+        console.error('Erro ao exibir YAML do deployment:', error);
+        showError(`Erro ao exibir YAML: ${error.message}`);
+    }
+}
+
+function initializeDeploymentYamlEditor(yamlContent) {
+    const editorContainer = document.getElementById('deploymentYamlEditor');
+    if (!editorContainer) {
+        console.error('Container do editor YAML não encontrado');
+        return;
+    }
+    
+    // Limpar container
+    editorContainer.innerHTML = '';
+
+    try {
+        // Criar container principal
+        const container = document.createElement('div');
+        container.className = 'yaml-editor-container';
+        
+        // Criar container para números de linha
+        const lineNumbersContainer = document.createElement('div');
+        lineNumbersContainer.className = 'yaml-line-numbers';
+        
+        // Criar container para o código
+        const codeContainer = document.createElement('div');
+        codeContainer.className = 'yaml-code-container';
+        
+        // Criar o pre com code
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        code.className = 'language-yaml';
+        code.textContent = yamlContent;
+        pre.appendChild(code);
+        codeContainer.appendChild(pre);
+        
+        // Gerar números de linha
+        const lines = yamlContent.split('\n');
+        const lineNumbers = document.createElement('div');
+        lineNumbers.className = 'yaml-line-numbers-content';
+        
+        lines.forEach((_, index) => {
+            const lineNumber = document.createElement('div');
+            lineNumber.className = 'yaml-line-number';
+            lineNumber.textContent = index + 1;
+            lineNumbers.appendChild(lineNumber);
+        });
+        
+        lineNumbersContainer.appendChild(lineNumbers);
+        
+        // Adicionar containers ao editor
+        container.appendChild(lineNumbersContainer);
+        container.appendChild(codeContainer);
+        editorContainer.appendChild(container);
+        
+        // Aplicar syntax highlighting com Prism
+        if (typeof Prism !== 'undefined') {
+            Prism.highlightElement(code);
+        }
+        
+    } catch (error) {
+        console.error('Erro ao criar editor YAML:', error);
+        editorContainer.innerHTML = `<pre><code class="language-yaml">${yamlContent}</code></pre>`;
+    }
+}
+
+function setupDeploymentYAMLButtons(name, namespace, yaml) {
+    // Botão voltar
+    const backBtn = document.getElementById('backToDeploymentDetailsBtn');
+    if (backBtn) {
+        backBtn.replaceWith(backBtn.cloneNode(true));
+        const newBackBtn = document.getElementById('backToDeploymentDetailsBtn');
+        newBackBtn.addEventListener('click', () => {
+            switchSection('deployments');
+            loadCurrentSection();
+        });
+    }
+    
+    // Botão copiar
+    const copyBtn = document.getElementById('copyDeploymentYamlBtn');
+    if (copyBtn) {
+        copyBtn.replaceWith(copyBtn.cloneNode(true));
+        const newCopyBtn = document.getElementById('copyDeploymentYamlBtn');
+        newCopyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(yaml);
+                showToast('YAML copiado para a área de transferência!', 'success');
+            } catch (error) {
+                console.error('Erro ao copiar YAML:', error);
+                showToast('Erro ao copiar YAML', 'error');
+            }
+        });
+    }
+    
+    // Botão download
+    const downloadBtn = document.getElementById('downloadDeploymentYamlBtn');
+    if (downloadBtn) {
+        downloadBtn.replaceWith(downloadBtn.cloneNode(true));
+        const newDownloadBtn = document.getElementById('downloadDeploymentYamlBtn');
+        newDownloadBtn.addEventListener('click', () => {
+            try {
+                const blob = new Blob([yaml], { type: 'text/yaml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${name}-${namespace}.yaml`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('YAML baixado com sucesso!', 'success');
+            } catch (error) {
+                console.error('Erro ao baixar YAML:', error);
+                showToast('Erro ao baixar YAML', 'error');
+            }
+        });
+    }
+}
+
 async function loadCurrentSection() {
     if (!currentConnectionId) return;
 
@@ -722,7 +1075,7 @@ async function loadCurrentSection() {
                 await loadPods();
                 break;
             case 'deployments':
-                // Implementar quando necessário
+                await loadDeployments();
                 break;
             case 'services':
                 // Implementar quando necessário
@@ -1198,6 +1551,11 @@ async function loadPods() {
             ? 'todos os namespaces'
             : `namespace: ${elements.namespaceSelect.value}`;
         elements.podsCount.textContent = `${filteredPods.length} pods`;
+        
+        // Atualizar breadcrumb se estivermos na seção de pods
+        if (currentSection === 'pods') {
+            updateBreadcrumbCount('pods');
+        }
 
     } catch (error) {
         throw new Error('Erro ao carregar pods: ' + error.message);
@@ -1226,6 +1584,12 @@ function switchSection(section) {
     // Atualizar breadcrumb
     currentSection = section;
     elements.currentSectionSpan.textContent = section.charAt(0).toUpperCase() + section.slice(1);
+    
+    // Atualizar placeholder do campo de pesquisa baseado na seção
+    updateSearchPlaceholder(section);
+    
+    // Atualizar contador do breadcrumb baseado na seção
+    updateBreadcrumbCount(section);
 
     // Gerenciar visibilidade do dashboard header e auto-refresh baseado na seção
     const dashboardContent = document.querySelector('.dashboard-content');
@@ -1250,6 +1614,24 @@ function switchSection(section) {
         stopAutoRefresh();
     } else if (section === 'podYaml') {
         // Esconder header na seção de YAML
+        elements.dashboardHeader.classList.add('hidden');
+        // Adicionar classe especial ao dashboard-content
+        if (dashboardContent) {
+            dashboardContent.classList.add('logs-active');
+        }
+        // Pausar auto-refresh na seção de YAML
+        stopAutoRefresh();
+    } else if (section === 'deploymentDetails') {
+        // Esconder header na seção de detalhes de deployment
+        elements.dashboardHeader.classList.add('hidden');
+        // Adicionar classe especial ao dashboard-content
+        if (dashboardContent) {
+            dashboardContent.classList.add('logs-active');
+        }
+        // Pausar auto-refresh na seção de detalhes
+        stopAutoRefresh();
+    } else if (section === 'deploymentYAML') {
+        // Esconder header na seção de YAML de deployment
         elements.dashboardHeader.classList.add('hidden');
         // Adicionar classe especial ao dashboard-content
         if (dashboardContent) {
@@ -1291,9 +1673,65 @@ function refreshCurrentSection() {
     }
 }
 
+function updateSearchPlaceholder(section) {
+    if (!elements.searchInput) return;
+    
+    switch (section) {
+        case 'pods':
+            elements.searchInput.placeholder = 'Buscar pods...';
+            break;
+        case 'deployments':
+            elements.searchInput.placeholder = 'Buscar deployments...';
+            break;
+        case 'services':
+            elements.searchInput.placeholder = 'Buscar services...';
+            break;
+        case 'namespaces':
+            elements.searchInput.placeholder = 'Buscar namespaces...';
+            break;
+        default:
+            elements.searchInput.placeholder = 'Buscar...';
+    }
+}
+
+function updateBreadcrumbCount(section) {
+    if (!elements.currentSectionCount) return;
+    
+    switch (section) {
+        case 'pods':
+            // Usar o contador de pods existente
+            if (elements.podsCount) {
+                elements.currentSectionCount.textContent = elements.podsCount.textContent;
+            }
+            break;
+        case 'deployments':
+            // Usar o contador de deployments
+            if (elements.deploymentsCount) {
+                elements.currentSectionCount.textContent = elements.deploymentsCount.textContent;
+            }
+            break;
+        case 'services':
+            // Usar o contador de services
+            if (elements.servicesCount) {
+                elements.currentSectionCount.textContent = elements.servicesCount.textContent;
+            }
+            break;
+        case 'namespaces':
+            // Usar o contador de namespaces
+            if (elements.namespacesCount) {
+                elements.currentSectionCount.textContent = elements.namespacesCount.textContent;
+            }
+            break;
+        default:
+            elements.currentSectionCount.textContent = '0 items';
+    }
+}
+
 function filterCurrentSection() {
     if (currentSection === 'pods' && currentConnectionId) {
         loadPods();
+    } else if (currentSection === 'deployments' && currentConnectionId) {
+        loadDeployments();
     }
 }
 
@@ -1515,12 +1953,23 @@ async function showPodLogs(podName, podNamespace) {
         // Parar streaming anterior se estiver ativo
         stopLogsStreaming();
 
+        // Limpar informações de deployment
+        currentDeploymentName = null;
+        currentDeploymentNamespace = null;
+        currentDeploymentPods = [];
+
         currentPodName = podName;
         currentPodNamespace = podNamespace;
 
         // Atualizar título
         if (elements.podLogsTitle) {
             elements.podLogsTitle.textContent = `${podName}`;
+        }
+
+        // Atualizar botão de voltar para pods
+        const backBtn = document.getElementById('backToPodsBtn');
+        if (backBtn) {
+            backBtn.innerHTML = '<span class="btn-icon">←</span> Voltar aos Pods';
         }
 
         // Limpar completamente logs anteriores
@@ -2026,6 +2475,612 @@ function handleContextMenuAction(action, data) {
         default:
             console.log('Ação não reconhecida:', action);
     }
+}
+
+// Função para lidar com ações do menu de contexto de deployments
+function handleDeploymentContextMenuAction(action, data) {
+    switch (action) {
+        case 'show-logs':
+            showDeploymentLogs(data.deploymentName, data.deploymentNamespace);
+            break;
+        case 'show-details':
+            showDeploymentDetails(data.deploymentName, data.deploymentNamespace);
+            break;
+        case 'show-yaml':
+            showDeploymentYAML(data.deploymentName, data.deploymentNamespace);
+            break;
+        case 'restart-deployment':
+            restartDeployment(data.deploymentName, data.deploymentNamespace);
+            break;
+        case 'scale-deployment':
+            scaleDeployment(data.deploymentName, data.deploymentNamespace);
+            break;
+        default:
+            console.log('Ação não reconhecida:', action);
+    }
+}
+
+// Função para mostrar menu de contexto de deployment
+async function showDeploymentContextMenu(deploymentName, deploymentNamespace) {
+    try {
+        await ipcRenderer.invoke('show-deployment-context-menu', deploymentName, deploymentNamespace);
+    } catch (error) {
+        console.error('Erro ao mostrar menu de contexto:', error);
+    }
+}
+
+// Função para mostrar logs de um deployment (logs agregados de todos os pods)
+async function showDeploymentLogs(deploymentName, deploymentNamespace) {
+    try {
+        showLoading(true);
+        
+        // Parar streaming anterior se estiver ativo
+        stopLogsStreaming();
+        
+        // Limpar informações de pod individual
+        currentPodName = null;
+        currentPodNamespace = null;
+        
+        // Buscar pods do deployment
+        const pods = await ipcRenderer.invoke('get-deployment-pods', currentConnectionId, deploymentName, deploymentNamespace);
+        
+        if (!pods || pods.length === 0) {
+            showToast('Nenhum pod encontrado para este deployment', 'warning');
+            showLoading(false);
+            return;
+        }
+        
+        // Armazenar informações para exibição
+        currentDeploymentName = deploymentName;
+        currentDeploymentNamespace = deploymentNamespace;
+        currentDeploymentPods = pods;
+        
+        // Atualizar título
+        if (elements.podLogsTitle) {
+            elements.podLogsTitle.textContent = `${deploymentName} (${pods.length} pod${pods.length !== 1 ? 's' : ''})`;
+        }
+        
+        // Atualizar botão de voltar
+        const backBtn = document.getElementById('backToPodsBtn');
+        if (backBtn) {
+            backBtn.innerHTML = '<span class="btn-icon">←</span> Voltar aos Deployments';
+        }
+        
+        // Limpar logs anteriores
+        clearLogs();
+        
+        // Sempre reinicializar o LogViewer
+        initializeLogViewer();
+        
+        // Mostrar seção de logs
+        switchSection('podLogs');
+        
+        // Carregar pods e containers
+        await loadDeploymentPodsAndContainers(pods);
+        
+        // Iniciar streaming de logs agregados
+        if (currentConnectionId) {
+            startDeploymentLogsStreaming(deploymentName, deploymentNamespace, pods);
+        }
+        
+        showLoading(false);
+    } catch (error) {
+        console.error('Erro ao mostrar logs do deployment:', error);
+        showError(`Erro ao carregar logs: ${error.message}`);
+        showLoading(false);
+    }
+}
+
+// Função para carregar pods e containers do deployment
+async function loadDeploymentPodsAndContainers(pods) {
+    try {
+        if (!elements.containerSelect) {
+            console.error('Elemento containerSelect não encontrado!');
+            return;
+        }
+
+        // Limpar dropdown
+        elements.containerSelect.innerHTML = '<option value="">Todos os pods e containers</option>';
+
+        // Adicionar opção para ver todos os containers
+        const allContainersOption = document.createElement('optgroup');
+        allContainersOption.label = 'Filtrar por container (todos os pods)';
+        
+        // Coletar containers únicos de todos os pods
+        const containerNames = new Set();
+        
+        for (const pod of pods) {
+            try {
+                const containers = await ipcRenderer.invoke('get-pod-containers', currentConnectionId, pod.name, pod.namespace);
+                containers.forEach(container => {
+                    containerNames.add(container.name);
+                });
+            } catch (error) {
+                console.error(`Erro ao carregar containers do pod ${pod.name}:`, error);
+            }
+        }
+
+        // Adicionar containers únicos
+        Array.from(containerNames).sort().forEach(containerName => {
+            const option = document.createElement('option');
+            option.value = `container:${containerName}`;
+            option.textContent = `📦 ${containerName}`;
+            allContainersOption.appendChild(option);
+        });
+        
+        if (containerNames.size > 0) {
+            elements.containerSelect.appendChild(allContainersOption);
+        }
+
+        // Adicionar opção para filtrar por pod específico
+        const podsOptgroup = document.createElement('optgroup');
+        podsOptgroup.label = 'Filtrar por pod específico';
+        
+        pods.forEach(pod => {
+            const option = document.createElement('option');
+            option.value = `pod:${pod.name}`;
+            option.textContent = `🔷 ${pod.name}`;
+            podsOptgroup.appendChild(option);
+        });
+        
+        elements.containerSelect.appendChild(podsOptgroup);
+
+    } catch (error) {
+        console.error('Erro ao carregar pods e containers do deployment:', error);
+        if (elements.containerSelect) {
+            elements.containerSelect.innerHTML = '<option value="">Todos os pods e containers</option>';
+        }
+    }
+}
+
+// Função para iniciar streaming de logs agregados do deployment
+async function startDeploymentLogsStreaming(deploymentName, deploymentNamespace, pods) {
+    if (logsStreaming) {
+        stopLogsStreaming();
+    }
+
+    try {
+        logsStreaming = true;
+        logsPaused = false;
+
+        // Atualizar botão de pausa
+        if (elements.pauseLogsBtn) {
+            elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
+        }
+
+        // Limpar logs anteriores
+        clearLogs();
+
+        // Obter filtro selecionado
+        const selectedFilter = elements.containerSelect ? elements.containerSelect.value : '';
+        
+        let podsToStream = pods;
+        let containerFilter = '';
+        let filterMessage = '';
+
+        // Analisar o filtro selecionado
+        if (selectedFilter) {
+            if (selectedFilter.startsWith('pod:')) {
+                // Filtrar por pod específico
+                const podName = selectedFilter.substring(4);
+                podsToStream = pods.filter(p => p.name === podName);
+                filterMessage = ` (pod: ${podName})`;
+            } else if (selectedFilter.startsWith('container:')) {
+                // Filtrar por container específico em todos os pods
+                containerFilter = selectedFilter.substring(10);
+                filterMessage = ` (container: ${containerFilter})`;
+            }
+        }
+
+        // Mostrar mensagem de início
+        const startEntry = {
+            id: 'start-deployment-logs',
+            timestamp: new Date().toISOString(),
+            podName: deploymentName,
+            level: 'info',
+            message: `📊 Iniciando streaming de logs do deployment ${deploymentName}${filterMessage} (${podsToStream.length} pod${podsToStream.length !== 1 ? 's' : ''})...`,
+            raw: `Iniciando streaming de logs do deployment ${deploymentName}`
+        };
+        addLogEntry(startEntry);
+
+        // Iniciar streaming para cada pod filtrado
+        for (const pod of podsToStream) {
+            try {
+                const result = await ipcRenderer.invoke('stream-pod-logs', 
+                    currentConnectionId, 
+                    pod.name, 
+                    pod.namespace, 
+                    containerFilter || null,
+                    30 // sinceSeconds para pegar logs recentes
+                );
+                
+                if (!result || !result.success) {
+                    throw new Error(result?.message || 'Falha ao iniciar streaming');
+                }
+            } catch (error) {
+                console.error(`Erro ao iniciar streaming de logs do pod ${pod.name}:`, error);
+                const errorEntry = {
+                    id: `error-${pod.name}-${Date.now()}`,
+                    timestamp: new Date().toISOString(),
+                    podName: pod.name,
+                    level: 'error',
+                    message: `❌ Erro ao carregar logs do pod ${pod.name}: ${error.message}`,
+                    raw: `Erro ao carregar logs do pod ${pod.name}`
+                };
+                addLogEntry(errorEntry);
+            }
+        }
+        
+    } catch (error) {
+        console.error('Erro ao iniciar streaming de logs do deployment:', error);
+        showError('Erro ao carregar logs: ' + error.message);
+    }
+}
+
+// Função para mostrar detalhes de um deployment
+async function showDeploymentDetails(deploymentName, deploymentNamespace) {
+    try {
+        showLoading(true);
+        
+        // Buscar detalhes do deployment
+        const deploymentDetails = await ipcRenderer.invoke('get-deployment-details', currentConnectionId, deploymentName, deploymentNamespace);
+        
+        if (!deploymentDetails) {
+            showError('Detalhes do deployment não encontrados');
+            showLoading(false);
+            return;
+        }
+        
+        // Atualizar título
+        const titleElement = document.getElementById('deploymentDetailsTitle');
+        if (titleElement) {
+            titleElement.textContent = `Detalhes do Deployment: ${deploymentName}`;
+        }
+        
+        // Renderizar detalhes usando o container
+        const detailsContainer = document.getElementById('deploymentDetailsContainer');
+        if (detailsContainer) {
+            renderDeploymentDetails(deploymentDetails, detailsContainer);
+        }
+        
+        // Configurar botões de ação
+        setupDeploymentDetailsButtons(deploymentName, deploymentNamespace);
+        
+        // Mostrar seção de detalhes
+        switchSection('deploymentDetails');
+        
+        showLoading(false);
+    } catch (error) {
+        console.error('Erro ao carregar detalhes do deployment:', error);
+        showError(`Erro ao carregar detalhes: ${error.message}`);
+        showLoading(false);
+    }
+}
+
+// Função para renderizar detalhes do deployment
+function renderDeploymentDetails(deployment, container) {
+    const d = deployment;
+    
+    // Calcular status geral
+    const isReady = d.status.readyReplicas === d.status.replicas && d.status.replicas > 0;
+    const statusClass = isReady ? 'running' : (d.status.readyReplicas > 0 ? 'pending' : 'failed');
+    const statusText = isReady ? 'Ready' : (d.status.readyReplicas > 0 ? 'Progressing' : 'Unavailable');
+    
+    // Renderizar condições
+    const conditionsHTML = d.status.conditions
+        .map(condition => `
+            <div class="condition-item">
+                <div class="condition-header">
+                    <span class="condition-type">${condition.type}</span>
+                    <span class="condition-status status-${condition.status === 'True' ? 'running' : 'failed'}">
+                        ${condition.status}
+                    </span>
+                </div>
+                ${condition.reason ? `<div class="condition-reason">${condition.reason}</div>` : ''}
+                ${condition.message ? `<div class="condition-message">${condition.message}</div>` : ''}
+                <div class="condition-time">Última transição: ${new Date(condition.lastTransitionTime).toLocaleString('pt-BR')}</div>
+            </div>
+        `)
+        .join('');
+    
+    // Renderizar containers
+    const containersHTML = d.template.containers
+        .map(container => `
+            <div class="container-detail">
+                <h4>${container.name}</h4>
+                <div class="detail-row">
+                    <span class="detail-label">Imagem:</span>
+                    <span class="detail-value container-image-full">${container.image}</span>
+                </div>
+                ${container.ports && container.ports.length > 0 ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Portas:</span>
+                        <div class="ports-list">
+                            ${container.ports.map(port => `
+                                <div class="port-item">
+                                    <span class="port-name">${port.name || '-'}:</span>
+                                    <span class="port-value">${port.containerPort}/${port.protocol || 'TCP'}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                ${container.resources && (container.resources.requests || container.resources.limits) ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Recursos:</span>
+                        <div class="resources-grid">
+                            ${container.resources.requests ? `
+                                <div class="resource-group">
+                                    <span class="resource-label">Requests:</span>
+                                    <div class="resource-values">
+                                        ${container.resources.requests.cpu ? `<div>CPU: ${container.resources.requests.cpu}</div>` : ''}
+                                        ${container.resources.requests.memory ? `<div>Memory: ${container.resources.requests.memory}</div>` : ''}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            ${container.resources.limits ? `
+                                <div class="resource-group">
+                                    <span class="resource-label">Limits:</span>
+                                    <div class="resource-values">
+                                        ${container.resources.limits.cpu ? `<div>CPU: ${container.resources.limits.cpu}</div>` : ''}
+                                        ${container.resources.limits.memory ? `<div>Memory: ${container.resources.limits.memory}</div>` : ''}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `)
+        .join('');
+    
+    // Renderizar labels
+    const labelsHTML = Object.entries(d.labels)
+        .map(([key, value]) => `
+            <div class="label-item">
+                <span class="label-key">${key}:</span>
+                <span class="label-value">${value}</span>
+            </div>
+        `)
+        .join('') || '<p class="no-data-text">Nenhum label definido</p>';
+    
+    // Renderizar selector
+    const selectorHTML = Object.entries(d.selector)
+        .map(([key, value]) => `
+            <div class="label-item">
+                <span class="label-key">${key}:</span>
+                <span class="label-value">${value}</span>
+            </div>
+        `)
+        .join('') || '<p class="no-data-text">Nenhum selector definido</p>';
+    
+    // HTML completo
+    container.innerHTML = `
+        <div class="pod-details-content">
+            <div class="details-section">
+                <h3>Informações Básicas</h3>
+                <div class="details-grid">
+                    <div class="detail-row">
+                        <span class="detail-label">Nome:</span>
+                        <span class="detail-value">${d.name}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Namespace:</span>
+                        <span class="detail-value">${d.namespace}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Status:</span>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Réplicas:</span>
+                        <span class="detail-value">${d.status.replicas || 0} total, ${d.status.readyReplicas || 0} ready, ${d.status.updatedReplicas || 0} updated, ${d.status.availableReplicas || 0} available</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Estratégia:</span>
+                        <span class="detail-value">${d.strategy.type || 'RollingUpdate'}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Criado em:</span>
+                        <span class="detail-value">${new Date(d.createdAt).toLocaleString('pt-BR')}</span>
+                    </div>
+                    <div class="detail-row full-width">
+                        <span class="detail-label">UID:</span>
+                        <span class="detail-value uid-text">${d.uid}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="details-section">
+                <h3>Condições</h3>
+                <div class="conditions-list">
+                    ${conditionsHTML}
+                </div>
+            </div>
+
+            <div class="details-section">
+                <h3>Selector</h3>
+                <div class="labels-list">
+                    ${selectorHTML}
+                </div>
+            </div>
+
+            <div class="details-section">
+                <h3>Labels</h3>
+                <div class="labels-list">
+                    ${labelsHTML}
+                </div>
+            </div>
+
+            <div class="details-section">
+                <h3>Template - Containers</h3>
+                <div class="containers-list">
+                    ${containersHTML}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Função para configurar botões de ação nos detalhes do deployment
+function setupDeploymentDetailsButtons(deploymentName, deploymentNamespace) {
+    // Botão voltar
+    const backBtn = document.getElementById('backToDeploymentsBtn');
+    if (backBtn) {
+        backBtn.replaceWith(backBtn.cloneNode(true));
+        const newBackBtn = document.getElementById('backToDeploymentsBtn');
+        newBackBtn.addEventListener('click', () => {
+            switchSection('deployments');
+            loadCurrentSection();
+        });
+    }
+    
+    // Botão ver logs
+    const logsBtn = document.getElementById('viewDeploymentLogsBtn');
+    if (logsBtn) {
+        logsBtn.replaceWith(logsBtn.cloneNode(true));
+        const newLogsBtn = document.getElementById('viewDeploymentLogsBtn');
+        newLogsBtn.addEventListener('click', async () => {
+            await showDeploymentLogs(deploymentName, deploymentNamespace);
+        });
+    }
+    
+    // Botão ver YAML
+    const yamlBtn = document.getElementById('viewDeploymentYAMLBtn');
+    if (yamlBtn) {
+        yamlBtn.replaceWith(yamlBtn.cloneNode(true));
+        const newYamlBtn = document.getElementById('viewDeploymentYAMLBtn');
+        newYamlBtn.addEventListener('click', async () => {
+            await showDeploymentYAML(deploymentName, deploymentNamespace);
+        });
+    }
+}
+
+// Função para reiniciar um deployment
+async function restartDeployment(deploymentName, deploymentNamespace) {
+    try {
+        const confirmed = confirm(`Deseja realmente reiniciar o deployment "${deploymentName}"?\n\nIsso irá reiniciar todos os pods do deployment.`);
+        if (!confirmed) return;
+        
+        showLoading(true);
+        await ipcRenderer.invoke('restart-deployment', currentConnectionId, deploymentName, deploymentNamespace);
+        showToast(`Deployment "${deploymentName}" reiniciado com sucesso!`, 'success');
+        
+        // Recarregar lista de deployments
+        await loadDeployments();
+    } catch (error) {
+        console.error('Erro ao reiniciar deployment:', error);
+        showError(`Erro ao reiniciar deployment: ${error.message}`);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Função para escalar um deployment
+async function scaleDeployment(deploymentName, deploymentNamespace) {
+    try {
+        // Buscar número atual de réplicas
+        const deployments = await ipcRenderer.invoke('get-deployments', currentConnectionId, deploymentNamespace);
+        const deployment = deployments.find(d => d.name === deploymentName);
+        
+        if (!deployment) {
+            showError('Deployment não encontrado');
+            return;
+        }
+        
+        const currentReplicas = deployment.replicas || 0;
+        
+        // Mostrar modal
+        showScaleModal(deploymentName, deploymentNamespace, currentReplicas);
+    } catch (error) {
+        console.error('Erro ao escalar deployment:', error);
+        showError(`Erro ao escalar deployment: ${error.message}`);
+    }
+}
+
+// Função para mostrar o modal de escalar deployment
+function showScaleModal(deploymentName, deploymentNamespace, currentReplicas) {
+    const modal = document.getElementById('scaleModal');
+    const deploymentNameEl = document.getElementById('scaleDeploymentName');
+    const namespaceEl = document.getElementById('scaleDeploymentNamespace');
+    const currentReplicasEl = document.getElementById('scaleCurrentReplicas');
+    const newReplicasInput = document.getElementById('scaleNewReplicas');
+    const confirmBtn = document.getElementById('scaleConfirmBtn');
+    const cancelBtn = document.getElementById('scaleCancelBtn');
+    const closeBtn = document.getElementById('scaleModalClose');
+    
+    // Preencher informações
+    deploymentNameEl.textContent = deploymentName;
+    namespaceEl.textContent = deploymentNamespace;
+    currentReplicasEl.textContent = currentReplicas;
+    newReplicasInput.value = currentReplicas;
+    
+    // Mostrar modal
+    modal.classList.add('show');
+    newReplicasInput.focus();
+    newReplicasInput.select();
+    
+    // Função para fechar modal
+    const closeModal = () => {
+        modal.classList.remove('show');
+        confirmBtn.replaceWith(confirmBtn.cloneNode(true));
+        cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+        closeBtn.replaceWith(closeBtn.cloneNode(true));
+    };
+    
+    // Handler para confirmar
+    const handleConfirm = async () => {
+        const replicas = parseInt(newReplicasInput.value, 10);
+        
+        if (isNaN(replicas) || replicas < 0) {
+            showError('Número de réplicas inválido');
+            return;
+        }
+        
+        closeModal();
+        
+        try {
+            showLoading(true);
+            await ipcRenderer.invoke('scale-deployment', currentConnectionId, deploymentName, deploymentNamespace, replicas);
+            showToast(`Deployment "${deploymentName}" escalado para ${replicas} réplica(s)!`, 'success');
+            
+            // Recarregar lista de deployments
+            await loadDeployments();
+        } catch (error) {
+            console.error('Erro ao escalar deployment:', error);
+            showError(`Erro ao escalar deployment: ${error.message}`);
+        } finally {
+            showLoading(false);
+        }
+    };
+    
+    // Event listeners
+    document.getElementById('scaleConfirmBtn').addEventListener('click', handleConfirm);
+    document.getElementById('scaleCancelBtn').addEventListener('click', closeModal);
+    document.getElementById('scaleModalClose').addEventListener('click', closeModal);
+    
+    // Fechar ao clicar fora do modal
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+    
+    // Confirmar ao pressionar Enter
+    newReplicasInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            handleConfirm();
+        }
+    });
+    
+    // Fechar ao pressionar Escape
+    const escapeHandler = (e) => {
+        if (e.key === 'Escape') {
+            closeModal();
+            document.removeEventListener('keydown', escapeHandler);
+        }
+    };
+    document.addEventListener('keydown', escapeHandler);
 }
 
 // Função para mostrar detalhes do pod
@@ -2615,8 +3670,8 @@ function startAutoRefresh() {
     if (!autoRefreshEnabled) return;
 
     autoRefreshInterval = setInterval(async () => {
-        // Só atualizar se estiver conectado e não estiver na seção de logs
-        if (currentConnectionId && currentSection !== 'podLogs') {
+        // Só atualizar se estiver conectado e não estiver na seção de logs ou YAML
+        if (currentConnectionId && currentSection !== 'podLogs' && currentSection !== 'deploymentLogs' && currentSection !== 'deploymentYAML') {
             try {
                 await loadCurrentSectionSilently();
             } catch (error) {
@@ -2661,7 +3716,7 @@ async function loadCurrentSectionSilently() {
                 await updatePodsData();
                 break;
             case 'deployments':
-                // Implementar quando necessário
+                await loadDeployments();
                 break;
             case 'services':
                 // Implementar quando necessário

@@ -78,7 +78,7 @@ async function streamPodLogs(kc, connectionId, podName, namespace, containerName
     const logStream = new stream.PassThrough();
 
     logStream.on('data', (chunk) => {
-        event.sender.send('log-stream-data', { streamId, log: chunk.toString() });
+        event.sender.send('log-stream-data', { streamId, podName, log: chunk.toString() });
     });
     logStream.on('error', (err) => {
         event.sender.send('log-stream-error', { streamId, message: `Erro no stream de logs: ${err.message}` });
