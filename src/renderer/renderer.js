@@ -158,8 +158,6 @@ const elements = {
     containerSelect: document.getElementById('containerSelect'),
     logsOptionsBtn: document.getElementById('logsOptionsBtn'),
     logsOptionsMenu: document.getElementById('logsOptionsMenu'),
-    lineWrapCheckbox: document.getElementById('lineWrapCheckbox'),
-    logColoringCheckbox: document.getElementById('logColoringCheckbox'),
     pauseLogsBtn: document.getElementById('pauseLogsBtn'),
     clearLogsBtn: document.getElementById('clearLogsBtn'),
     logsCount: document.getElementById('logsCount'),
@@ -299,32 +297,6 @@ elements.pauseLogsBtn.addEventListener('click', () => {
 
 elements.clearLogsBtn.addEventListener('click', () => {
     clearLogs();
-});
-
-elements.lineWrapCheckbox.addEventListener('change', (e) => {
-    logsOptions.lineWrap = e.target.checked;
-    if (e.target.checked) {
-        // Desmarcar scroll horizontal se quebra de linha estiver ativa
-        elements.horizontalScrollCheckbox.checked = false;
-        logsOptions.horizontalScroll = false;
-    }
-    updateLogsDisplay();
-});
-
-elements.logColoringCheckbox.addEventListener('change', (e) => {
-    logsOptions.logColoring = e.target.checked;
-    updateLogsDisplay();
-});
-
-elements.horizontalScrollCheckbox = document.getElementById('horizontalScrollCheckbox');
-elements.horizontalScrollCheckbox.addEventListener('change', (e) => {
-    logsOptions.horizontalScroll = e.target.checked;
-    if (e.target.checked) {
-        // Desmarcar quebra de linha se scroll horizontal estiver ativo
-        elements.lineWrapCheckbox.checked = false;
-        logsOptions.lineWrap = false;
-    }
-    updateLogsDisplay();
 });
 
 document.querySelectorAll('input[name="timestamp"]').forEach(radio => {
