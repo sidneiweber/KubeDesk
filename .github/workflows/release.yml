@@ -69,27 +69,102 @@ jobs:
       run: |
         mkdir -p release-packages
         
-        # Find and organize all build artifacts
-        find artifacts -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.dmg" -o -name "*.zip" \) -exec cp {} release-packages/ \;
+        echo "🔍 Procurando artefatos..."
+        find artifacts -type f -name "*" | head -20
         
-        # Create a zip with all packages
+        # Organize artifacts by platform
+        mkdir -p release-packages/linux release-packages/windows release-packages/macos
+        
+        # Linux artifacts
+        echo "📦 Organizando artefatos Linux..."
+        find artifacts -path "*/linux-*" -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.snap" \) -exec cp {} release-packages/linux/ \;
+        
+        # Windows artifacts (exclude elevate.exe and other unwanted files)
+        echo "📦 Organizando artefatos Windows..."
+        find artifacts -path "*/win-*" -type f \( -name "*.exe" -o -name "*.zip" \) ! -name "elevate.exe" ! -name "*.exe.blockmap" -exec cp {} release-packages/windows/ \;
+        
+        # macOS artifacts
+        echo "📦 Organizando artefatos macOS..."
+        find artifacts -path "*/mac-*" -type f \( -name "*.dmg" -o -name "*.zip" \) -exec cp {} release-packages/macos/ \;
+        
+        # Create individual platform archives
         cd release-packages
-        zip -r ../kubedesk-${{ github.ref_name }}-all-platforms.zip .
-        cd ..
+        for platform in linux windows macos; do
+          if [ -d "$platform" ] && [ "$(ls -A $platform)" ]; then
+            zip -r "kubedesk-${{ github.ref_name }}-$platform.zip" "$platform"
+            echo "✅ Criado: kubedesk-${{ github.ref_name }}-$platform.zip"
+          fi
+        done
+        
+        # Create universal archive
+        zip -r "kubedesk-${{ github.ref_name }}-all-platforms.zip" .
+        echo "✅ Criado: kubedesk-${{ github.ref_name }}-all-platforms.zip"
+        
+        # List all created files
+        echo "📋 Arquivos criados:"
+        ls -la *.zip
         
         # List contents for verification
-        echo "Release packages created:"
-        ls -la release-packages/
-        echo "Archive created:"
-        ls -la kubedesk-${{ github.ref_name }}-all-platforms.zip
+        echo "📋 Conteúdo por plataforma:"
+        for platform in linux windows macos; do
+          if [ -d "$platform" ]; then
+            echo "  $platform:"
+            ls -la "$platform" || echo "    (vazio)"
+          fi
+        done
+
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        # Get commits since last tag
+        if git describe --tags --abbrev=0 HEAD~1 >/dev/null 2>&1; then
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1)
+          echo "## 📋 Mudanças desde $LAST_TAG" >> release_notes.md
+          echo "" >> release_notes.md
+          git log --pretty=format:"- %s (%an)" $LAST_TAG..HEAD >> release_notes.md
+        else
+          echo "## 📋 Primeira Release" >> release_notes.md
+          echo "" >> release_notes.md
+          git log --pretty=format:"- %s (%an)" --max-count=10 >> release_notes.md
+        fi
+        
+        echo "" >> release_notes.md
+        echo "## 📦 Downloads Disponíveis" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### 🐧 Linux" >> release_notes.md
+        echo "- **AppImage**: Executável portável universal" >> release_notes.md
+        echo "- **DEB**: Pacote para Debian/Ubuntu" >> release_notes.md
+        echo "- **RPM**: Pacote para Red Hat/Fedora" >> release_notes.md
+        echo "- **SNAP**: Pacote universal" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### 🪟 Windows" >> release_notes.md
+        echo "- **EXE**: Instalador NSIS" >> release_notes.md
+        echo "- **Portable**: Versão portável" >> release_notes.md
+        echo "- **ZIP**: Arquivo compactado" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### 🍎 macOS" >> release_notes.md
+        echo "- **DMG**: Instalador para macOS" >> release_notes.md
+        echo "- **ZIP**: Arquivo compactado" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### 📁 Arquivos Organizados" >> release_notes.md
+        echo "- **all-platforms.zip**: Todos os artefatos" >> release_notes.md
+        echo "- **linux.zip**: Apenas artefatos Linux" >> release_notes.md
+        echo "- **windows.zip**: Apenas artefatos Windows" >> release_notes.md
+        echo "- **macos.zip**: Apenas artefatos macOS" >> release_notes.md
+        
+        echo "## 📝 Release Notes:" >> $GITHUB_OUTPUT
+        cat release_notes.md >> $GITHUB_OUTPUT
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
           kubedesk-${{ github.ref_name }}-all-platforms.zip
-          release-packages/*
-        generate_release_notes: true
+          kubedesk-${{ github.ref_name }}-linux.zip
+          kubedesk-${{ github.ref_name }}-windows.zip
+          kubedesk-${{ github.ref_name }}-macos.zip
+        body_path: release_notes.md
+        generate_release_notes: false
         draft: false
         prerelease: false
       env:
