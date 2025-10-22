@@ -16,18 +16,36 @@
       {
         "target": "dmg",
         "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "assets/icon.icns"
+    "icon": "assets/icon.icns",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist"
   },
   "win": {
     "target": [
       {
         "target": "nsis",
         "arch": ["x64", "ia32"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64", "ia32"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "ia32"]
       }
     ],
-    "icon": "assets/icon.ico"
+    "icon": "assets/icon.ico",
+    "publisherName": "KubeDesk",
+    "verifyUpdateCodeSignature": false
   },
   "linux": {
     "target": [
@@ -42,18 +60,25 @@
       {
         "target": "rpm",
         "arch": ["x64"]
+      },
+      {
+        "target": "snap",
+        "arch": ["x64"]
       }
     ],
     "icon": "assets/icon-square.png",
     "category": "Development",
     "executableName": "kubedesk",
     "maintainer": "Sidnei",
+    "vendor": "KubeDesk",
+    "description": "Ferramenta para gerenciar clusters Kubernetes",
     "desktop": {
       "Name": "KubeDesk",
       "Comment": "Kubernetes Management Tool",
       "Icon": "kubedesk",
       "Categories": "Development;System;"
-    }
+    },
+    "synopsis": "Kubernetes cluster management tool"
   },
   "nsis": {
     "oneClick": false,
