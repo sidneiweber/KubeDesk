@@ -37,6 +37,12 @@ jobs:
         node-version: '18'
         cache: 'npm'
 
+    - name: Install snapcraft (Linux only)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo snap install snapcraft --classic
+        snapcraft --version
+
     - name: Install dependencies
       run: npm ci
 
@@ -77,7 +83,7 @@ jobs:
         
         # Linux artifacts
         echo "📦 Organizando artefatos Linux..."
-        find artifacts -path "*/linux-*" -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.snap" \) -exec cp {} release-packages/linux/ \;
+        find artifacts -path "*/linux-*" -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) -exec cp {} release-packages/linux/ \;
         
         # Windows artifacts (exclude elevate.exe and other unwanted files)
         echo "📦 Organizando artefatos Windows..."
@@ -135,7 +141,6 @@ jobs:
         echo "- **AppImage**: Executável portável universal" >> release_notes.md
         echo "- **DEB**: Pacote para Debian/Ubuntu" >> release_notes.md
         echo "- **RPM**: Pacote para Red Hat/Fedora" >> release_notes.md
-        echo "- **SNAP**: Pacote universal" >> release_notes.md
         echo "" >> release_notes.md
         echo "### 🪟 Windows" >> release_notes.md
         echo "- **EXE**: Instalador NSIS" >> release_notes.md

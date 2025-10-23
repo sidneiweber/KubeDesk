@@ -60,10 +60,6 @@
       {
         "target": "rpm",
         "arch": ["x64"]
-      },
-      {
-        "target": "snap",
-        "arch": ["x64"]
       }
     ],
     "icon": "assets/icon-square.png",
