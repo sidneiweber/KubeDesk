@@ -152,8 +152,12 @@ jobs:
         echo "- **windows.zip**: Apenas artefatos Windows" >> release_notes.md
         echo "- **macos.zip**: Apenas artefatos macOS" >> release_notes.md
         
-        echo "## 📝 Release Notes:" >> $GITHUB_OUTPUT
-        cat release_notes.md >> $GITHUB_OUTPUT
+        # Set the release notes as output
+        {
+          echo "release_notes<<EOF"
+          cat release_notes.md
+          echo "EOF"
+        } >> $GITHUB_OUTPUT
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
