@@ -174,6 +174,13 @@
                             <i class="bi bi-alarm auto-refresh-icon"></i>
                             Auto
                         </button>
+
+                        <button id="podsColumnSelectorBtn" class="btn-secondary" title="Selecionar colunas">
+                            <i class="bi bi-columns"></i>
+                        </button>
+                        <button id="deploymentsColumnSelectorBtn" class="btn-secondary" title="Selecionar colunas" style="display: none;">
+                            <i class="bi bi-columns"></i>
+                        </button>
                     </div>
                 </div>
 
@@ -220,7 +227,6 @@
 
                     <!-- Deployments Section -->
                     <div id="deploymentsSection" class="content-section">
-
 
                         <div class="table-container">
                             <table class="deployments-table">
@@ -284,9 +290,8 @@
                     <div id="podLogsSection" class="content-section">
                         <div class="section-header">
                             <div class="logs-header-left">
-                                <button id="backToPodsBtn" class="btn-secondary">
+                                <button id="backToPodsBtn" class="btn-secondary" title="Voltar aos Pods">
                                     <span class="btn-icon">←</span>
-                                    Voltar aos Pods
                                 </button>
                                 <h3 id="podLogsTitle">Logs do Pod</h3>
                             </div>
@@ -391,9 +396,8 @@
                     <div id="podDetailsSection" class="content-section">
                         <div class="section-header">
                             <div class="details-header-left">
-                                <button id="backToPodsFromDetailsBtn" class="btn-secondary">
+                                <button id="backToPodsFromDetailsBtn" class="btn-secondary" title="Voltar aos Pods">
                                     <span class="btn-icon">←</span>
-                                    Voltar aos Pods
                                 </button>
                                 <h3 id="podDetailsTitle">Detalhes do Pod</h3>
                             </div>
@@ -401,7 +405,7 @@
                                 <div class="pod-actions">
                                     <button id="viewPodLogsBtn" class="btn-secondary">
                                         <i class="bi bi-journal-text"></i>
-                                        Ver Logs
+                                        Logs
                                     </button>
                                 </div>
                             </div>
@@ -480,9 +484,8 @@
                     <div id="podYamlSection" class="content-section">
                         <div class="section-header">
                             <div class="yaml-header-left">
-                                <button id="backToPodsFromYamlBtn" class="btn-secondary">
+                                <button id="backToPodsFromYamlBtn" class="btn-secondary" title="Voltar aos Pods">
                                     <span class="btn-icon">←</span>
-                                    Voltar aos Pods
                                 </button>
                                 <h3 id="podYamlTitle">YAML do Pod</h3>
                             </div>
@@ -511,9 +514,8 @@
                     <div id="deploymentDetailsSection" class="content-section">
                         <div class="section-header">
                             <div class="details-header-left">
-                                <button id="backToDeploymentsBtn" class="btn-secondary">
+                                <button id="backToDeploymentsBtn" class="btn-secondary" title="Voltar aos Deployments">
                                     <span class="btn-icon">←</span>
-                                    Voltar aos Deployments
                                 </button>
                                 <h3 id="deploymentDetailsTitle">Detalhes do Deployment</h3>
                             </div>
@@ -521,11 +523,11 @@
                                 <div class="deployment-actions">
                                     <button id="viewDeploymentLogsBtn" class="btn-secondary">
                                         <i class="bi bi-journal-text"></i>
-                                        Ver Logs
+                                        Logs
                                     </button>
                                     <button id="viewDeploymentYAMLBtn" class="btn-secondary">
                                         <i class="bi bi-file-earmark-code"></i>
-                                        Ver YAML
+                                        YAML
                                     </button>
                                 </div>
                             </div>
@@ -540,9 +542,8 @@
                     <div id="deploymentYAMLSection" class="content-section">
                         <div class="section-header">
                             <div class="yaml-header-left">
-                                <button id="backToDeploymentDetailsBtn" class="btn-secondary">
+                                <button id="backToDeploymentDetailsBtn" class="btn-secondary" title="Voltar aos Detalhes">
                                     <span class="btn-icon">←</span>
-                                    Voltar aos Detalhes
                                 </button>
                                 <h3 id="deploymentYAMLTitle">YAML do Deployment</h3>
                             </div>
@@ -571,9 +572,8 @@
                     <div id="deploymentLogsSection" class="content-section">
                         <div class="section-header">
                             <div class="logs-header-left">
-                                <button id="backToDeploymentsFromLogsBtn" class="btn-secondary">
+                                <button id="backToDeploymentsFromLogsBtn" class="btn-secondary" title="Voltar aos Deployments">
                                     <span class="btn-icon">←</span>
-                                    Voltar aos Deployments
                                 </button>
                                 <h3 id="deploymentLogsTitle">Logs do Deployment</h3>
                             </div>
@@ -651,6 +651,56 @@
             <div class="modal-footer">
                 <button id="scaleCancelBtn" class="btn-secondary">Cancelar</button>
                 <button id="scaleConfirmBtn" class="btn-primary">Escalar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para seleção de colunas dos Pods -->
+    <div id="podsColumnSelectorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Selecionar Colunas - Pods</h3>
+                <button class="modal-close" id="podsColumnSelectorClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="column-selector">
+                    <div class="column-selector-actions">
+                        <button id="podsSelectAllColumns" class="btn-secondary">Selecionar Todas</button>
+                        <button id="podsDeselectAllColumns" class="btn-secondary">Desmarcar Todas</button>
+                    </div>
+                    <div id="podsColumnCheckboxes" class="column-checkboxes">
+                        <!-- Checkboxes serão adicionados dinamicamente -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="podsColumnSelectorCancel" class="btn-secondary">Cancelar</button>
+                <button id="podsColumnSelectorSave" class="btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para seleção de colunas dos Deployments -->
+    <div id="deploymentsColumnSelectorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Selecionar Colunas - Deployments</h3>
+                <button class="modal-close" id="deploymentsColumnSelectorClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="column-selector">
+                    <div class="column-selector-actions">
+                        <button id="deploymentsSelectAllColumns" class="btn-secondary">Selecionar Todas</button>
+                        <button id="deploymentsDeselectAllColumns" class="btn-secondary">Desmarcar Todas</button>
+                    </div>
+                    <div id="deploymentsColumnCheckboxes" class="column-checkboxes">
+                        <!-- Checkboxes serão adicionados dinamicamente -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="deploymentsColumnSelectorCancel" class="btn-secondary">Cancelar</button>
+                <button id="deploymentsColumnSelectorSave" class="btn-primary">Salvar</button>
             </div>
         </div>
     </div>
