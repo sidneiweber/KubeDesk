@@ -1163,11 +1163,33 @@ body {
     color: #ffffff;
     font-size: 0.9rem;
     min-width: 150px;
+    max-width: 300px;
+    width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .container-selector select:focus {
     outline: none;
     border-color: #4a9eff;
+}
+
+/* Estilos para as opções do dropdown */
+.container-selector select option {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 4px 8px;
+}
+
+/* Estilos para optgroups */
+.container-selector select optgroup {
+    font-weight: bold;
+    color: #4a9eff;
+    background-color: #2d2d30;
+    padding: 4px 8px;
 }
 
 .logs-filter input {
@@ -1611,6 +1633,107 @@ body {
 
 .xterm .xterm-search-bar button:hover {
     background: #1177bb;
+}
+
+
+/* Column Selector */
+.column-selector {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* Posicionamento específico para modais de seleção de colunas */
+#podsColumnSelectorModal .modal-content,
+#deploymentsColumnSelectorModal .modal-content {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    left: auto;
+    transform: none;
+    max-width: 500px;
+    width: 90%;
+    max-height: calc(100vh - 40px);
+    margin: 0;
+}
+
+#podsColumnSelectorModal .modal-content {
+    top: 20px;
+    right: 20px;
+}
+
+#deploymentsColumnSelectorModal .modal-content {
+    top: 20px;
+    right: 20px;
+}
+
+.column-selector-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #404040;
+}
+
+.column-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+}
+
+.column-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: #2d2d30;
+    border: 1px solid #404040;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.column-checkbox-item:hover {
+    background: #3d3d40;
+    border-color: #555;
+}
+
+.column-checkbox-item input[type="checkbox"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: #4a9eff;
+}
+
+.column-checkbox-item label {
+    margin: 0;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #e5e5e5;
+    flex: 1;
+}
+
+/* Botões de voltar apenas com ícone */
+#backToPodsBtn,
+#backToPodsFromDetailsBtn,
+#backToPodsFromYamlBtn,
+#backToDeploymentsBtn,
+#backToDeploymentsFromLogsBtn,
+#backToDeploymentDetailsBtn {
+    padding: 6px 8px;
+    min-width: 32px;
+    width: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#backToPodsBtn .btn-icon,
+#backToPodsFromDetailsBtn .btn-icon,
+#backToPodsFromYamlBtn .btn-icon,
+#backToDeploymentsBtn .btn-icon,
+#backToDeploymentsFromLogsBtn .btn-icon,
+#backToDeploymentDetailsBtn .btn-icon {
+    font-size: 1rem;
+    margin: 0;
 }
 
 /* Enhanced logs toolbar */

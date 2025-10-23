@@ -100,6 +100,31 @@ let currentDeploymentYamlContent = '';
 // Configurações de performance
 const MAX_TOTAL_LOGS = 5000; // Máximo de logs mantidos em memória
 
+// Configurações de colunas
+const PODS_COLUMNS = {
+    name: { key: 'name', label: 'Nome', visible: true, required: true },
+    namespace: { key: 'namespace', label: 'Namespace', visible: true, required: false },
+    status: { key: 'status', label: 'Status', visible: true, required: true },
+    ready: { key: 'ready', label: 'Ready', visible: true, required: false },
+    restarts: { key: 'restarts', label: 'Restarts', visible: true, required: false },
+    age: { key: 'age', label: 'Age', visible: true, required: false },
+    cpuUsage: { key: 'cpuUsage', label: 'CPU Usage', visible: true, required: false },
+    memoryUsage: { key: 'memoryUsage', label: 'Memory Usage', visible: true, required: false },
+    node: { key: 'node', label: 'Node', visible: true, required: false },
+    ip: { key: 'ip', label: 'IP', visible: true, required: false }
+};
+
+const DEPLOYMENTS_COLUMNS = {
+    name: { key: 'name', label: 'Nome', visible: true, required: true },
+    namespace: { key: 'namespace', label: 'Namespace', visible: true, required: false },
+    status: { key: 'status', label: 'Status', visible: true, required: true },
+    ready: { key: 'ready', label: 'Ready', visible: true, required: false },
+    upToDate: { key: 'upToDate', label: 'Up-to-date', visible: true, required: false },
+    available: { key: 'available', label: 'Available', visible: true, required: false },
+    age: { key: 'age', label: 'Age', visible: true, required: false },
+    images: { key: 'images', label: 'Images', visible: true, required: false }
+};
+
 // Elementos DOM
 const elements = {
     // Configuração (Setup Screen)
@@ -181,6 +206,14 @@ const elements = {
     terminalSearchInput: document.getElementById('terminalSearchInput'),
     searchPrevBtn: document.getElementById('searchPrevBtn'),
     searchNextBtn: document.getElementById('searchNextBtn'),
+
+    // Column selectors
+    podsColumnSelectorBtn: document.getElementById('podsColumnSelectorBtn'),
+    deploymentsColumnSelectorBtn: document.getElementById('deploymentsColumnSelectorBtn'),
+    podsColumnSelectorModal: document.getElementById('podsColumnSelectorModal'),
+    deploymentsColumnSelectorModal: document.getElementById('deploymentsColumnSelectorModal'),
+    podsColumnCheckboxes: document.getElementById('podsColumnCheckboxes'),
+    deploymentsColumnCheckboxes: document.getElementById('deploymentsColumnCheckboxes'),
     scrollTopBtn: document.getElementById('scrollTopBtn'),
     scrollBottomBtn: document.getElementById('scrollBottomBtn'),
 
@@ -217,6 +250,42 @@ elements.refreshBtn.addEventListener('click', refreshCurrentSection);
 elements.autoRefreshBtn.addEventListener('click', handleAutoRefreshToggle);
 elements.searchInput.addEventListener('input', filterCurrentSection);
 elements.reconnectBtn.addEventListener('click', showSetupScreen);
+
+// Seletores de colunas
+elements.podsColumnSelectorBtn?.addEventListener('click', () => {
+    initializeColumnSelector('pods');
+    elements.podsColumnSelectorModal.style.display = 'block';
+});
+
+elements.deploymentsColumnSelectorBtn?.addEventListener('click', () => {
+    initializeColumnSelector('deployments');
+    elements.deploymentsColumnSelectorModal.style.display = 'block';
+});
+
+// Event listeners para modais de colunas
+document.getElementById('podsColumnSelectorClose')?.addEventListener('click', () => {
+    elements.podsColumnSelectorModal.style.display = 'none';
+});
+
+document.getElementById('podsColumnSelectorCancel')?.addEventListener('click', () => {
+    elements.podsColumnSelectorModal.style.display = 'none';
+});
+
+document.getElementById('podsColumnSelectorSave')?.addEventListener('click', () => {
+    saveColumnConfiguration('pods');
+});
+
+document.getElementById('deploymentsColumnSelectorClose')?.addEventListener('click', () => {
+    elements.deploymentsColumnSelectorModal.style.display = 'none';
+});
+
+document.getElementById('deploymentsColumnSelectorCancel')?.addEventListener('click', () => {
+    elements.deploymentsColumnSelectorModal.style.display = 'none';
+});
+
+document.getElementById('deploymentsColumnSelectorSave')?.addEventListener('click', () => {
+    saveColumnConfiguration('deployments');
+});
 
 // Navegação
 elements.navLinks.forEach(link => {
@@ -590,6 +659,9 @@ async function initializeApp() {
         // Limpar preferências antigas na inicialização
         clearOldPreferences();
 
+        // Inicializar configurações de colunas
+        initializeColumnPreferences();
+
         // Mostrar tela de setup por padrão
         showSetupScreen();
 
@@ -838,20 +910,29 @@ async function loadDeployments() {
                 .map(c => `<div class="container-image" title="${c.name}: ${c.image}">${c.image}</div>`)
                 .join('');
 
-            row.innerHTML = `
-                <td class="deployment-name">${deployment.name}</td>
-                <td class="deployment-namespace">${namespaceDisplay}</td>
-                <td><span class="status-${statusClass}">${statusText}</span></td>
-                <td>
-                    <span class="${deployment.readyReplicas === deployment.replicas ? 'ready-ready' : 'ready-not-ready'}">
-                        ${deployment.ready}
-                    </span>
-                </td>
-                <td>${deployment.upToDate}</td>
-                <td>${deployment.available}</td>
-                <td>${deployment.age}</td>
-                <td class="deployment-images">${images || '-'}</td>
-            `;
+            // Criar células baseadas na ordem das colunas visíveis
+            const cells = [];
+            
+            // Definir a ordem das colunas conforme definido em DEPLOYMENTS_COLUMNS
+            const columnOrder = [
+                { key: 'name', content: `<td class="deployment-name">${deployment.name}</td>` },
+                { key: 'namespace', content: `<td class="deployment-namespace">${namespaceDisplay}</td>` },
+                { key: 'status', content: `<td><span class="status-${statusClass}">${statusText}</span></td>` },
+                { key: 'ready', content: `<td><span class="${deployment.readyReplicas === deployment.replicas ? 'ready-ready' : 'ready-not-ready'}">${deployment.ready}</span></td>` },
+                { key: 'upToDate', content: `<td>${deployment.upToDate}</td>` },
+                { key: 'available', content: `<td>${deployment.available}</td>` },
+                { key: 'age', content: `<td>${deployment.age}</td>` },
+                { key: 'images', content: `<td class="deployment-images">${images || '-'}</td>` }
+            ];
+            
+            // Adicionar apenas as colunas visíveis na ordem correta
+            columnOrder.forEach(column => {
+                if (DEPLOYMENTS_COLUMNS[column.key].visible) {
+                    cells.push(column.content);
+                }
+            });
+
+            row.innerHTML = cells.join('');
             elements.deploymentsTableBody.appendChild(row);
         });
 
@@ -1072,9 +1153,11 @@ async function loadCurrentSection() {
 
         switch (currentSection) {
             case 'pods':
+                updateTableHeaders('pods');
                 await loadPods();
                 break;
             case 'deployments':
+                updateTableHeaders('deployments');
                 await loadDeployments();
                 break;
             case 'services':
@@ -1160,8 +1243,24 @@ async function updatePodsData() {
             );
         }
 
-        // Atualizar dados existentes ou criar novos
-        await updateOrCreatePodRows(podsWithMetrics);
+        // Verificar se o número de colunas mudou (indicando mudança de configuração)
+        const currentVisibleColumns = Object.values(PODS_COLUMNS).filter(col => col.visible).length;
+        const existingRows = elements.podsTableBody.querySelectorAll('tr');
+        const firstRow = existingRows[0];
+        const currentColumnCount = firstRow ? firstRow.querySelectorAll('td').length : 0;
+        
+        // Se o número de colunas mudou, recriar todas as linhas
+        if (currentColumnCount !== currentVisibleColumns && currentColumnCount > 0) {
+            // Limpar tabela e recriar todas as linhas
+            elements.podsTableBody.innerHTML = '';
+            podsWithMetrics.forEach(pod => {
+                const row = createPodRow(pod);
+                elements.podsTableBody.appendChild(row);
+            });
+        } else {
+            // Atualizar dados existentes ou criar novos
+            await updateOrCreatePodRows(podsWithMetrics);
+        }
 
         // Atualizar contador
         const namespaceInfo = elements.namespaceSelect.value === 'all'
@@ -1232,20 +1331,31 @@ function updatePodRow(row, pod) {
         pod.metrics.memory.limits
     );
 
-    // Atualizar conteúdo das células
+    // Atualizar conteúdo das células baseado na ordem das colunas visíveis
     const cells = row.querySelectorAll('td');
-    if (cells.length >= 10) {
-        cells[0].innerHTML = pod.name; // Nome
-        cells[1].innerHTML = namespaceDisplay; // Namespace
-        cells[2].innerHTML = `<span class="status-${pod.status.toLowerCase()}">${pod.status}</span>`; // Status
-        cells[3].innerHTML = `<span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span>`; // Ready
-        cells[4].textContent = pod.restarts; // Restarts
-        cells[5].textContent = pod.age; // Age
-        cells[6].innerHTML = cpuBar; // CPU
-        cells[7].innerHTML = memoryBar; // Memory
-        cells[8].textContent = pod.node || '-'; // Node
-        cells[9].textContent = pod.ip || '-'; // IP
-    }
+    let cellIndex = 0;
+    
+    // Definir a ordem das colunas conforme definido em PODS_COLUMNS
+    const columnOrder = [
+        { key: 'name', update: (cell) => { cell.innerHTML = pod.name; } },
+        { key: 'namespace', update: (cell) => { cell.innerHTML = namespaceDisplay; } },
+        { key: 'status', update: (cell) => { cell.innerHTML = `<span class="status-${pod.status.toLowerCase()}">${pod.status}</span>`; } },
+        { key: 'ready', update: (cell) => { cell.innerHTML = `<span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span>`; } },
+        { key: 'restarts', update: (cell) => { cell.textContent = pod.restarts; } },
+        { key: 'age', update: (cell) => { cell.textContent = pod.age; } },
+        { key: 'cpuUsage', update: (cell) => { cell.innerHTML = cpuBar; } },
+        { key: 'memoryUsage', update: (cell) => { cell.innerHTML = memoryBar; } },
+        { key: 'node', update: (cell) => { cell.textContent = pod.node || '-'; } },
+        { key: 'ip', update: (cell) => { cell.textContent = pod.ip || '-'; } }
+    ];
+    
+    // Atualizar apenas as colunas visíveis na ordem correta
+    columnOrder.forEach(column => {
+        if (PODS_COLUMNS[column.key].visible && cells[cellIndex]) {
+            column.update(cells[cellIndex]);
+            cellIndex++;
+        }
+    });
 
     // Re-adicionar event listeners para as barras de progresso
     addProgressBarListeners(row);
@@ -1277,18 +1387,31 @@ function createPodRow(pod) {
         pod.metrics.memory.limits
     );
 
-    row.innerHTML = `
-        <td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}">${pod.name}</td>
-        <td class="pod-namespace">${namespaceDisplay}</td>
-        <td><span class="status-${pod.status.toLowerCase()}">${pod.status}</span></td>
-        <td><span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span></td>
-        <td>${pod.restarts}</td>
-        <td>${pod.age}</td>
-        <td class="resource-column">${cpuBar}</td>
-        <td class="resource-column">${memoryBar}</td>
-        <td>${pod.node || '-'}</td>
-        <td>${pod.ip || '-'}</td>
-    `;
+    // Criar células baseadas na ordem das colunas visíveis
+    const cells = [];
+    
+    // Definir a ordem das colunas conforme definido em PODS_COLUMNS
+    const columnOrder = [
+        { key: 'name', content: `<td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}">${pod.name}</td>` },
+        { key: 'namespace', content: `<td class="pod-namespace">${namespaceDisplay}</td>` },
+        { key: 'status', content: `<td><span class="status-${pod.status.toLowerCase()}">${pod.status}</span></td>` },
+        { key: 'ready', content: `<td><span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span></td>` },
+        { key: 'restarts', content: `<td>${pod.restarts}</td>` },
+        { key: 'age', content: `<td>${pod.age}</td>` },
+        { key: 'cpuUsage', content: `<td class="resource-column">${cpuBar}</td>` },
+        { key: 'memoryUsage', content: `<td class="resource-column">${memoryBar}</td>` },
+        { key: 'node', content: `<td>${pod.node || '-'}</td>` },
+        { key: 'ip', content: `<td>${pod.ip || '-'}</td>` }
+    ];
+    
+    // Adicionar apenas as colunas visíveis na ordem correta
+    columnOrder.forEach(column => {
+        if (PODS_COLUMNS[column.key].visible) {
+            cells.push(column.content);
+        }
+    });
+
+    row.innerHTML = cells.join('');
 
     // Adicionar event listeners
     addPodRowListeners(row);
@@ -1440,42 +1563,9 @@ async function loadPods() {
             );
         }
 
-        // Adicionar pods à tabela
+        // Adicionar pods à tabela usando a função que respeita configurações de colunas
         podsWithMetrics.forEach(pod => {
-            const row = document.createElement('tr');
-
-            // Destacar namespace quando visualizando todos os namespaces
-            const namespaceDisplay = elements.namespaceSelect.value === 'all'
-                ? `<span class="namespace-badge">${pod.namespace}</span>`
-                : pod.namespace;
-
-            // Renderizar barras de progresso de recursos
-            const cpuBar = renderResourceProgressBar(
-                pod.metrics.cpu.current,
-                pod.metrics.cpu.requests,
-                pod.metrics.cpu.percentage,
-                'cpu'
-            );
-            
-            const memoryBar = renderResourceProgressBar(
-                pod.metrics.memory.current,
-                pod.metrics.memory.requests,
-                pod.metrics.memory.percentage,
-                'memory'
-            );
-
-            row.innerHTML = `
-                <td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}">${pod.name}</td>
-                <td class="pod-namespace">${namespaceDisplay}</td>
-                <td><span class="status-${pod.status.toLowerCase()}">${pod.status}</span></td>
-                <td><span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span></td>
-                <td>${pod.restarts}</td>
-                <td>${pod.age}</td>
-                <td class="resource-column">${cpuBar}</td>
-                <td class="resource-column">${memoryBar}</td>
-                <td>${pod.node || '-'}</td>
-                <td>${pod.ip || '-'}</td>
-            `;
+            const row = createPodRow(pod);
             elements.podsTableBody.appendChild(row);
         });
 
@@ -1489,15 +1579,7 @@ async function loadPods() {
             });
         });
 
-        // Adicionar event listeners para clique direito nos nomes dos pods
-        elements.podsTableBody.querySelectorAll('.pod-name').forEach(cell => {
-            cell.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                const podName = e.target.dataset.podName;
-                const podNamespace = e.target.dataset.podNamespace;
-                showPodContextMenu(podName, podNamespace);
-            });
-        });
+        // Event listeners para menu de contexto já são adicionados pela função addPodRowListeners
 
         // Adicionar event listeners para tooltips das barras de progresso
         elements.podsTableBody.querySelectorAll('.progress-bar').forEach(bar => {
@@ -1590,6 +1672,23 @@ function switchSection(section) {
     
     // Atualizar contador do breadcrumb baseado na seção
     updateBreadcrumbCount(section);
+
+    // Mostrar/ocultar botões de colunas baseado na seção
+    const podsColumnBtn = document.getElementById('podsColumnSelectorBtn');
+    const deploymentsColumnBtn = document.getElementById('deploymentsColumnSelectorBtn');
+    
+    if (podsColumnBtn && deploymentsColumnBtn) {
+        if (section === 'pods') {
+            podsColumnBtn.style.display = 'inline-flex';
+            deploymentsColumnBtn.style.display = 'none';
+        } else if (section === 'deployments') {
+            podsColumnBtn.style.display = 'none';
+            deploymentsColumnBtn.style.display = 'inline-flex';
+        } else {
+            podsColumnBtn.style.display = 'none';
+            deploymentsColumnBtn.style.display = 'none';
+        }
+    }
 
     // Gerenciar visibilidade do dashboard header e auto-refresh baseado na seção
     const dashboardContent = document.querySelector('.dashboard-content');
@@ -1969,7 +2068,7 @@ async function showPodLogs(podName, podNamespace) {
         // Atualizar botão de voltar para pods
         const backBtn = document.getElementById('backToPodsBtn');
         if (backBtn) {
-            backBtn.innerHTML = '<span class="btn-icon">←</span> Voltar aos Pods';
+            backBtn.innerHTML = '<span class="btn-icon">←</span>';
         }
 
         // Limpar completamente logs anteriores
@@ -2058,7 +2157,7 @@ async function loadPodContainers() {
         containers.forEach(container => {
             const option = document.createElement('option');
             option.value = container.name;
-            option.textContent = `${container.name} (${container.image})`;
+            option.textContent = `${container.name}`;
             if (!container.ready) {
                 option.textContent += ' [Não pronto]';
                 option.disabled = true;
@@ -2321,6 +2420,190 @@ function clearLogs() {
     updateLogsStats();
 }
 
+// Funções para gerenciar configurações de colunas
+function getColumnPreferencesKey(section) {
+    return `kubedesk_columns_${section}_${currentContext?.cluster || 'default'}`;
+}
+
+function loadColumnPreferences(section) {
+    const key = getColumnPreferencesKey(section);
+    const saved = localStorage.getItem(key);
+    
+    if (saved) {
+        try {
+            return JSON.parse(saved);
+        } catch (error) {
+            console.error('Erro ao carregar preferências de colunas:', error);
+        }
+    }
+    
+    // Retornar configuração padrão
+    return section === 'pods' ? { ...PODS_COLUMNS } : { ...DEPLOYMENTS_COLUMNS };
+}
+
+function saveColumnPreferences(section, preferences) {
+    const key = getColumnPreferencesKey(section);
+    try {
+        localStorage.setItem(key, JSON.stringify(preferences));
+    } catch (error) {
+        console.error('Erro ao salvar preferências de colunas:', error);
+    }
+}
+
+function initializeColumnSelector(section) {
+    const isPods = section === 'pods';
+    const columns = isPods ? PODS_COLUMNS : DEPLOYMENTS_COLUMNS;
+    const preferences = loadColumnPreferences(section);
+    
+    // Aplicar preferências salvas
+    Object.keys(columns).forEach(key => {
+        if (preferences[key]) {
+            columns[key].visible = preferences[key].visible;
+        }
+    });
+    
+    const modal = isPods ? elements.podsColumnSelectorModal : elements.deploymentsColumnSelectorModal;
+    const checkboxesContainer = isPods ? elements.podsColumnCheckboxes : elements.deploymentsColumnCheckboxes;
+    
+    // Limpar container
+    checkboxesContainer.innerHTML = '';
+    
+    // Criar checkboxes para cada coluna
+    Object.entries(columns).forEach(([key, config]) => {
+        const item = document.createElement('div');
+        item.className = 'column-checkbox-item';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `${section}_${key}`;
+        checkbox.checked = config.visible;
+        checkbox.disabled = config.required;
+        
+        const label = document.createElement('label');
+        label.htmlFor = `${section}_${key}`;
+        label.textContent = config.label;
+        
+        if (config.required) {
+            label.style.color = '#a3a3a3';
+            label.title = 'Coluna obrigatória';
+        }
+        
+        item.appendChild(checkbox);
+        item.appendChild(label);
+        checkboxesContainer.appendChild(item);
+    });
+    
+    // Event listeners para selecionar/desmarcar todas
+    const selectAllBtn = document.getElementById(`${section}SelectAllColumns`);
+    const deselectAllBtn = document.getElementById(`${section}DeselectAllColumns`);
+    
+    if (selectAllBtn) {
+        selectAllBtn.onclick = () => {
+            checkboxesContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        };
+    }
+    
+    if (deselectAllBtn) {
+        deselectAllBtn.onclick = () => {
+            checkboxesContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                if (!checkbox.disabled) {
+                    checkbox.checked = false;
+                }
+            });
+        };
+    }
+}
+
+function saveColumnConfiguration(section) {
+    const isPods = section === 'pods';
+    const columns = isPods ? PODS_COLUMNS : DEPLOYMENTS_COLUMNS;
+    const checkboxesContainer = isPods ? elements.podsColumnCheckboxes : elements.deploymentsColumnCheckboxes;
+    
+    // Atualizar configurações
+    Object.keys(columns).forEach(key => {
+        const checkbox = checkboxesContainer.querySelector(`#${section}_${key}`);
+        if (checkbox) {
+            columns[key].visible = checkbox.checked;
+        }
+    });
+    
+    // Salvar preferências
+    const preferences = {};
+    Object.keys(columns).forEach(key => {
+        preferences[key] = {
+            visible: columns[key].visible,
+            required: columns[key].required
+        };
+    });
+    
+    saveColumnPreferences(section, preferences);
+    
+    // Fechar modal
+    const modal = isPods ? elements.podsColumnSelectorModal : elements.deploymentsColumnSelectorModal;
+    modal.style.display = 'none';
+    
+    // Recarregar tabela completamente para aplicar mudanças
+    if (currentSection === section) {
+        // Atualizar cabeçalhos primeiro
+        updateTableHeaders(section);
+        
+        // Limpar completamente o conteúdo da tabela
+        if (section === 'pods') {
+            elements.podsTableBody.innerHTML = '';
+            loadPods();
+        } else if (section === 'deployments') {
+            elements.deploymentsTableBody.innerHTML = '';
+            loadDeployments();
+        }
+    }
+}
+
+function updateTableHeaders(section) {
+    const isPods = section === 'pods';
+    const columns = isPods ? PODS_COLUMNS : DEPLOYMENTS_COLUMNS;
+    const table = isPods ? 
+        document.querySelector('.pods-table') : 
+        document.querySelector('.deployments-table');
+    
+    if (!table) return;
+    
+    const thead = table.querySelector('thead tr');
+    if (!thead) return;
+    
+    // Limpar cabeçalhos existentes
+    thead.innerHTML = '';
+    
+    // Adicionar apenas colunas visíveis
+    Object.entries(columns).forEach(([key, config]) => {
+        if (config.visible) {
+            const th = document.createElement('th');
+            th.textContent = config.label;
+            th.dataset.column = key;
+            thead.appendChild(th);
+        }
+    });
+}
+
+function initializeColumnPreferences() {
+    // Carregar preferências salvas para pods
+    const podsPreferences = loadColumnPreferences('pods');
+    Object.keys(PODS_COLUMNS).forEach(key => {
+        if (podsPreferences[key]) {
+            PODS_COLUMNS[key].visible = podsPreferences[key].visible;
+        }
+    });
+    
+    // Carregar preferências salvas para deployments
+    const deploymentsPreferences = loadColumnPreferences('deployments');
+    Object.keys(DEPLOYMENTS_COLUMNS).forEach(key => {
+        if (deploymentsPreferences[key]) {
+            DEPLOYMENTS_COLUMNS[key].visible = deploymentsPreferences[key].visible;
+        }
+    });
+}
+
 function clearLogsDisplay() {
     // Limpar completamente a visualização
     elements.logsContent.innerHTML = '';
@@ -2543,7 +2826,7 @@ async function showDeploymentLogs(deploymentName, deploymentNamespace) {
         // Atualizar botão de voltar
         const backBtn = document.getElementById('backToPodsBtn');
         if (backBtn) {
-            backBtn.innerHTML = '<span class="btn-icon">←</span> Voltar aos Deployments';
+            backBtn.innerHTML = '<span class="btn-icon">←</span>';
         }
         
         // Limpar logs anteriores
@@ -2619,7 +2902,12 @@ async function loadDeploymentPodsAndContainers(pods) {
         pods.forEach(pod => {
             const option = document.createElement('option');
             option.value = `pod:${pod.name}`;
-            option.textContent = `🔷 ${pod.name}`;
+            // Truncar nome se for muito longo
+            const displayName = pod.name.length > 30 ? 
+                pod.name.substring(0, 27) + '...' : 
+                pod.name;
+            option.textContent = `🔷 ${displayName}`;
+            option.title = pod.name; // Tooltip com nome completo
             podsOptgroup.appendChild(option);
         });
         
