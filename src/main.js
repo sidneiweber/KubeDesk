@@ -202,25 +202,101 @@ ipcMain.handle('get-services', async (event, connectionId, namespace = 'default'
       response = await k8sApi.listNamespacedService(namespace);
     }
 
-    const service = response.body.items.map(pod => ({
-      service: service.metadata.name,
-      // namespace: pod.metadata.namespace,
-      // status: pod.status.phase,
-      // ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
-      // restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
-      // age: calculateAge(pod.metadata.creationTimestamp),
-      // node: pod.spec.nodeName,
-      // ip: pod.status.podIP,
-      // containers: pod.spec.containers.map(container => ({
-      //     name: container.name,
-      //     image: container.image,
-      //     resources: container.resources
-      // }))
+    const services = response.body.items.map(service => ({
+      metadata: {
+        name: service.metadata.name,
+        namespace: service.metadata.namespace,
+        creationTimestamp: service.metadata.creationTimestamp,
+        uid: service.metadata.uid,
+        resourceVersion: service.metadata.resourceVersion,
+        labels: service.metadata.labels || {},
+        annotations: service.metadata.annotations || {}
+      },
+      spec: {
+        type: service.spec.type,
+        clusterIP: service.spec.clusterIP,
+        externalIPs: service.spec.externalIPs || [],
+        sessionAffinity: service.spec.sessionAffinity,
+        loadBalancerIP: service.spec.loadBalancerIP,
+        ports: service.spec.ports || [],
+        selector: service.spec.selector || {}
+      },
+      status: service.status || {}
     }));
 
     return services;
   } catch (error) {
     throw new Error(`Erro ao buscar services: ${error.message}`);
+  }
+});
+
+ipcMain.handle('get-service', async (event, connectionId, name, namespace) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+    const response = await k8sApi.readNamespacedService(name, namespace);
+    
+    return {
+      metadata: {
+        name: response.body.metadata.name,
+        namespace: response.body.metadata.namespace,
+        creationTimestamp: response.body.metadata.creationTimestamp,
+        uid: response.body.metadata.uid,
+        resourceVersion: response.body.metadata.resourceVersion,
+        labels: response.body.metadata.labels || {},
+        annotations: response.body.metadata.annotations || {}
+      },
+      spec: {
+        type: response.body.spec.type,
+        clusterIP: response.body.spec.clusterIP,
+        externalIPs: response.body.spec.externalIPs || [],
+        sessionAffinity: response.body.spec.sessionAffinity,
+        loadBalancerIP: response.body.spec.loadBalancerIP,
+        ports: response.body.spec.ports || [],
+        selector: response.body.spec.selector || {}
+      },
+      status: response.body.status || {}
+    };
+  } catch (error) {
+    throw new Error(`Erro ao buscar service: ${error.message}`);
+  }
+});
+
+ipcMain.handle('get-service-yaml', async (event, connectionId, name, namespace) => {
+  try {
+    const kc = activeConfigs.get(connectionId);
+    if (!kc) {
+      throw new Error('Conexão não encontrada');
+    }
+
+    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+    const response = await k8sApi.readNamespacedService(name, namespace);
+    
+    // Remover managedFields do metadata para uma visualização mais limpa
+    const serviceData = JSON.parse(JSON.stringify(response.body));
+    if (serviceData.metadata && serviceData.metadata.managedFields) {
+      delete serviceData.metadata.managedFields;
+    }
+
+    // Converter para YAML usando a biblioteca js-yaml
+    try {
+      const yaml = require('js-yaml');
+      return yaml.dump(serviceData, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        sortKeys: false
+      });
+    } catch (e) {
+      // Fallback para JSON formatado
+      return JSON.stringify(serviceData, null, 2);
+    }
+  } catch (error) {
+    throw new Error(`Erro ao buscar YAML do service: ${error.message}`);
   }
 });
 
