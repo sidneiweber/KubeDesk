@@ -110,12 +110,17 @@
 
             <div class="sidebar-content">
                 <div class="navigation" id="navigation">
-                    <h3>Navegação</h3>
+                    <h3>Workload</h3>
                     <ul class="nav-menu">
                         <li><a href="#" data-section="pods" class="nav-link active">Pods</a></li>
                         <li><a href="#" data-section="deployments" class="nav-link">Deployments</a></li>
-                        <li><a href="#" data-section="services" class="nav-link">Services</a></li>
                         <li><a href="#" data-section="namespaces" class="nav-link">Namespaces</a></li>
+                    </ul>
+                    <h3>Networking</h3>
+                    <ul class="nav-menu">
+                        <li><a href="#" data-section="services" class="nav-link">Services</a></li>
+                        <li><a href="#" data-section="ingresses" class="nav-link active">Ingresses</a></li>
+                        <li><a href="#" data-section="endpoints" class="nav-link">Endpoints</a></li>
                     </ul>
                 </div>
 
@@ -251,14 +256,23 @@
 
                     <!-- Services Section -->
                     <div id="servicesSection" class="content-section">
-                        <div class="section-header">
-                            <h2>Services</h2>
-                            <div class="section-stats">
-                                <span id="servicesCount">0 services</span>
-                            </div>
-                        </div>
-                        <div class="placeholder">
-                            <p>Seção de Services em desenvolvimento</p>
+                        <div class="table-container">
+                            <table class="pods-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Namespace</th>
+                                        <th>Tipo</th>
+                                        <th>Cluster IP</th>
+                                        <th>External IP</th>
+                                        <th>Portas</th>
+                                        <th>Age</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="servicesTableBody">
+                                    <!-- Services will be populated here -->
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -626,6 +640,158 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Service Details Section -->
+                    <div id="serviceDetailsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="details-header-left">
+                                <button id="backToServicesFromDetailsBtn" class="btn-secondary" title="Voltar aos Services">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="serviceDetailsTitle">Detalhes do Service</h3>
+                            </div>
+                            <div class="details-header-right">
+                                <div class="service-actions">
+                                    <button id="viewServiceYAMLBtn" class="btn-secondary">
+                                        <i class="bi bi-file-code"></i>
+                                        YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="service-details-container">
+                            <div class="service-details-content">
+                                <!-- Service Overview -->
+                                <div class="details-section">
+                                    <h4>Informações Básicas</h4>
+                                    <div class="details-grid">
+                                        <div class="detail-item">
+                                            <label>Nome:</label>
+                                            <span id="serviceDetailName">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Namespace:</label>
+                                            <span id="serviceDetailNamespace">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Idade:</label>
+                                            <span id="serviceDetailAge">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>UID:</label>
+                                            <span id="serviceDetailUID">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Resource Version:</label>
+                                            <span id="serviceDetailResourceVersion">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Service Spec -->
+                                <div class="details-section">
+                                    <h4>Especificação</h4>
+                                    <div class="details-grid">
+                                        <div class="detail-item">
+                                            <label>Tipo:</label>
+                                            <span id="serviceDetailType">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Cluster IP:</label>
+                                            <span id="serviceDetailClusterIP">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>External IPs:</label>
+                                            <span id="serviceDetailExternalIP">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Session Affinity:</label>
+                                            <span id="serviceDetailSessionAffinity">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Load Balancer IP:</label>
+                                            <span id="serviceDetailLoadBalancerIP">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Service Status -->
+                                <div class="details-section">
+                                    <h4>Status</h4>
+                                    <div class="details-grid">
+                                        <div class="detail-item">
+                                            <label>Load Balancer Ingress:</label>
+                                            <span id="serviceDetailLoadBalancerIngress">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Endpoints -->
+                                <div class="details-section">
+                                    <h4>Endpoints</h4>
+                                    <div id="serviceEndpointsList" class="endpoints-list">
+                                        <!-- Endpoints will be populated here -->
+                                    </div>
+                                </div>
+
+                                <!-- Labels and Annotations Side by Side -->
+                                <div class="details-section-group">
+                                    <div class="details-section">
+                                        <h4>Labels</h4>
+                                        <div id="serviceLabelsList" class="labels-list">
+                                            <!-- Labels will be populated here -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="details-section">
+                                        <h4>Annotations</h4>
+                                        <div id="serviceAnnotationsList" class="annotations-list">
+                                            <!-- Annotations will be populated here -->
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Selector -->
+                                <div class="details-section">
+                                    <h4>Selector</h4>
+                                    <div id="serviceSelectorList" class="selector-list">
+                                        <!-- Selector will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Service YAML Section -->
+                    <div id="serviceYamlSection" class="content-section">
+                        <div class="section-header">
+                            <div class="yaml-header-left">
+                                <button id="backToServicesFromYamlBtn" class="btn-secondary" title="Voltar aos Services">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="serviceYamlTitle">YAML do Service</h3>
+                            </div>
+                            <div class="yaml-header-right">
+                                <div class="yaml-actions">
+                                    <button id="copyServiceYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copiar YAML
+                                    </button>
+                                    <button id="downloadServiceYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-download"></i>
+                                        Baixar YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="yaml-container">
+                            <div id="serviceYamlContent" class="yaml-editor">
+                                <!-- Service YAML will be displayed here -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -709,6 +875,9 @@
     <script src="components/Deployments/DeploymentsTable.js"></script>
     <script src="components/Deployments/DeploymentDetails.js"></script>
     <script src="components/Deployments/DeploymentYAMLViewer.js"></script>
+    <script src="components/Services/ServicesTable.js"></script>
+    <script src="components/Services/ServiceDetails.js"></script>
+    <script src="components/Services/ServiceYAMLViewer.js"></script>
     <script src="renderer.js"></script>
 </body>
 

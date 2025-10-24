@@ -79,6 +79,8 @@ let currentPodName = null;
 let currentPodNamespace = null;
 let currentDeploymentName = null;
 let currentDeploymentNamespace = null;
+let currentServiceName = null;
+let currentServiceNamespace = null;
 let currentDeploymentPods = [];
 let logsStreaming = false;
 let logsPaused = false;
@@ -176,6 +178,7 @@ const elements = {
     // Tabelas
     podsTableBody: document.getElementById('podsTableBody'),
     deploymentsTableBody: document.getElementById('deploymentsTableBody'),
+    servicesTableBody: document.getElementById('servicesTableBody'),
     namespacesTableBody: document.getElementById('namespacesTableBody'),
 
     // Contadores
@@ -221,6 +224,15 @@ const elements = {
     podDetailsTitle: document.getElementById('podDetailsTitle'),
     backToPodsFromDetailsBtn: document.getElementById('backToPodsFromDetailsBtn'),
     viewPodLogsBtn: document.getElementById('viewPodLogsBtn'),
+    
+    // Service Details elements
+    serviceDetailsTitle: document.getElementById('serviceDetailsTitle'),
+    backToServicesFromDetailsBtn: document.getElementById('backToServicesFromDetailsBtn'),
+    viewServiceYAMLBtn: document.getElementById('viewServiceYAMLBtn'),
+    
+    // Service YAML elements
+    serviceYamlTitle: document.getElementById('serviceYamlTitle'),
+    backToServicesFromYamlBtn: document.getElementById('backToServicesFromYamlBtn'),
     podDetailName: document.getElementById('podDetailName'),
     podDetailNamespace: document.getElementById('podDetailNamespace'),
     podDetailStatus: document.getElementById('podDetailStatus'),
@@ -362,6 +374,22 @@ elements.viewPodLogsBtn.addEventListener('click', () => {
         // Inicializar os logs do pod
         showPodLogs(currentPodName, currentPodNamespace);
     }
+});
+
+// Service Details event listeners
+elements.backToServicesFromDetailsBtn.addEventListener('click', () => {
+    switchSection('services');
+});
+
+elements.viewServiceYAMLBtn.addEventListener('click', () => {
+    if (currentServiceName && currentServiceNamespace) {
+        showServiceYAML(currentServiceName, currentServiceNamespace);
+    }
+});
+
+// Service YAML event listeners
+elements.backToServicesFromYamlBtn.addEventListener('click', () => {
+    switchSection('services');
 });
 
 // Pod YAML event listeners
@@ -993,6 +1021,343 @@ async function loadDeployments() {
     }
 }
 
+async function loadServices() {
+    try {
+        const namespace = elements.namespaceSelect.value;
+        const services = await ipcRenderer.invoke('get-services', currentConnectionId, namespace);
+
+        // Filtrar services se necessário
+        const searchTerm = elements.searchInput.value.toLowerCase().trim();
+        let filteredServices = services;
+
+        if (searchTerm) {
+            filteredServices = services.filter(service =>
+                service.metadata.name.toLowerCase().includes(searchTerm) ||
+                service.metadata.namespace.toLowerCase().includes(searchTerm) ||
+                service.spec.type.toLowerCase().includes(searchTerm) ||
+                (service.spec.clusterIP && service.spec.clusterIP.toLowerCase().includes(searchTerm))
+            );
+        }
+
+        // Limpar tabela
+        elements.servicesTableBody.innerHTML = '';
+
+        // Verificar se há services para exibir
+        if (filteredServices.length === 0) {
+            const message = searchTerm
+                ? 'Nenhum service encontrado com o termo de busca'
+                : (elements.namespaceSelect.value === 'all'
+                    ? 'Nenhum service encontrado em nenhum namespace'
+                    : `Nenhum service encontrado no namespace "${elements.namespaceSelect.value}"`);
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="8" class="no-data">
+                    <div class="no-data-message">
+                        <span class="no-data-icon">🔗</span>
+                        <p>${message}</p>
+                    </div>
+                </td>
+            `;
+            elements.servicesTableBody.appendChild(row);
+            elements.currentSectionCount.textContent = `0 services`;
+            return;
+        }
+
+        // Adicionar services à tabela
+        for (const service of filteredServices) {
+            const row = document.createElement('tr');
+            row.dataset.serviceName = service.metadata.name;
+            row.dataset.serviceNamespace = service.metadata.namespace;
+
+            // Calcular idade
+            const age = calculateAge(service.metadata.creationTimestamp);
+            
+            // Formatar portas
+            const ports = service.spec.ports ? service.spec.ports.map(port => 
+                `${port.port}:${port.targetPort || port.port}/${port.protocol || 'TCP'}`
+            ).join(', ') : '-';
+
+            // Namespace badge se visualizando todos os namespaces
+            const namespaceDisplay = elements.namespaceSelect.value === 'all'
+                ? `<span class="namespace-badge">${service.metadata.namespace}</span>`
+                : service.metadata.namespace;
+
+            // Formatar External IP
+            const externalIPs = service.spec.externalIPs && service.spec.externalIPs.length > 0 
+                ? service.spec.externalIPs.join(', ') 
+                : (service.spec.type === 'LoadBalancer' && service.status && service.status.loadBalancer && service.status.loadBalancer.ingress 
+                    ? service.status.loadBalancer.ingress.map(ingress => ingress.ip || ingress.hostname).join(', ')
+                    : '-');
+
+            row.innerHTML = `
+                <td><span class="service-name">${service.metadata.name}</span></td>
+                <td>${namespaceDisplay}</td>
+                <td>${service.spec.type}</td>
+                <td>${service.spec.clusterIP || '-'}</td>
+                <td>${externalIPs}</td>
+                <td>${ports}</td>
+                <td>${age}</td>
+            `;
+            
+            // Adicionar evento de clique direito na linha para abrir menu de contexto
+            row.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showServiceContextMenu(e, service.metadata.name, service.metadata.namespace);
+            });
+            
+            elements.servicesTableBody.appendChild(row);
+        }
+
+        // Atualizar contador
+        elements.currentSectionCount.textContent = `${filteredServices.length} services`;
+
+    } catch (error) {
+        console.error('Erro ao carregar services:', error);
+        throw error;
+    }
+}
+
+function calculateAge(creationTimestamp) {
+    if (!creationTimestamp) return '-';
+    
+    const now = new Date();
+    const created = new Date(creationTimestamp);
+    const diffMs = now - created;
+    
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    
+    if (diffDays > 0) return `${diffDays}d`;
+    if (diffHours > 0) return `${diffHours}h`;
+    if (diffMinutes > 0) return `${diffMinutes}m`;
+    return '<1m';
+}
+
+function showServiceContextMenu(event, serviceName, namespace) {
+    event.stopPropagation();
+    
+    // Remove menu anterior se existir
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+        existingMenu.remove();
+    }
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = event.pageX + 'px';
+    menu.style.top = event.pageY + 'px';
+    menu.style.zIndex = '1000';
+
+    menu.innerHTML = `
+        <div class="context-menu-item" onclick="showServiceDetails('${serviceName}', '${namespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-eye"></i>
+            Ver Detalhes
+        </div>
+        <div class="context-menu-item" onclick="showServiceYAML('${serviceName}', '${namespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-file-code"></i>
+            Ver YAML
+        </div>
+    `;
+
+    document.body.appendChild(menu);
+
+    // Remove menu ao clicar fora
+    const removeMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', removeMenu);
+        }
+    };
+
+    setTimeout(() => {
+        document.addEventListener('click', removeMenu);
+    }, 100);
+}
+
+async function showServiceDetails(serviceName, namespace) {
+    try {
+        showLoading(true);
+        
+        // Armazenar service atual
+        currentServiceName = serviceName;
+        currentServiceNamespace = namespace;
+        
+        // Buscar detalhes do service
+        const service = await ipcRenderer.invoke('get-service', currentConnectionId, serviceName, namespace);
+        
+        // Atualizar título
+        elements.serviceDetailsTitle.textContent = `Detalhes do Service: ${serviceName}`;
+        
+        // Mostrar seção de detalhes
+        switchSection('serviceDetails');
+        
+        // Preencher detalhes
+        if (window.serviceDetails) {
+            window.serviceDetails.showDetails(service);
+        }
+        
+        showLoading(false);
+    } catch (error) {
+        console.error('Erro ao exibir detalhes do service:', error);
+        showError(`Erro ao exibir detalhes: ${error.message}`);
+        showLoading(false);
+    }
+}
+
+async function showServiceYAML(serviceName, namespace) {
+    try {
+        showLoading(true);
+        
+        // Armazenar service atual
+        currentServiceName = serviceName;
+        currentServiceNamespace = namespace;
+        
+        // Atualizar título
+        elements.serviceYamlTitle.textContent = `YAML do Service: ${serviceName}`;
+        
+        // Buscar YAML do service
+        const yamlContent = await ipcRenderer.invoke('get-service-yaml', currentConnectionId, serviceName, namespace);
+        
+        if (!yamlContent) {
+            showToast('Não foi possível obter o YAML do service', 'error');
+            return;
+        }
+        
+        // Mostrar seção de YAML
+        switchSection('serviceYaml');
+        
+        // Inicializar editor YAML
+        initializeServiceYamlEditor(yamlContent);
+        
+        // Configurar botões
+        setupServiceYAMLButtons(serviceName, namespace, yamlContent);
+        
+        showLoading(false);
+    } catch (error) {
+        console.error('Erro ao exibir YAML do service:', error);
+        showError(`Erro ao exibir YAML: ${error.message}`);
+        showLoading(false);
+    }
+}
+
+
+function initializeServiceYamlEditor(yamlContent) {
+    const editorContainer = document.getElementById('serviceYamlContent');
+    if (!editorContainer) {
+        console.error('Container do editor YAML não encontrado');
+        return;
+    }
+    
+    // Limpar container
+    editorContainer.innerHTML = '';
+
+    try {
+        // Criar container principal
+        const container = document.createElement('div');
+        container.className = 'yaml-editor-container';
+        
+        // Criar container para números de linha
+        const lineNumbersContainer = document.createElement('div');
+        lineNumbersContainer.className = 'yaml-line-numbers';
+        
+        // Criar container para o código
+        const codeContainer = document.createElement('div');
+        codeContainer.className = 'yaml-code-container';
+        
+        // Criar o pre com code
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        code.className = 'language-yaml';
+        code.textContent = yamlContent;
+        pre.appendChild(code);
+        codeContainer.appendChild(pre);
+        
+        // Gerar números de linha
+        const lines = yamlContent.split('\n');
+        const lineNumbers = document.createElement('div');
+        lineNumbers.className = 'yaml-line-numbers-content';
+        
+        lines.forEach((_, index) => {
+            const lineNumber = document.createElement('div');
+            lineNumber.className = 'yaml-line-number';
+            lineNumber.textContent = index + 1;
+            lineNumbers.appendChild(lineNumber);
+        });
+        
+        lineNumbersContainer.appendChild(lineNumbers);
+        
+        // Adicionar containers ao editor
+        container.appendChild(lineNumbersContainer);
+        container.appendChild(codeContainer);
+        editorContainer.appendChild(container);
+        
+        // Aplicar syntax highlighting com Prism
+        if (typeof Prism !== 'undefined') {
+            Prism.highlightElement(code);
+        }
+        
+    } catch (error) {
+        console.error('Erro ao criar editor YAML:', error);
+        editorContainer.innerHTML = `<pre><code class="language-yaml">${yamlContent}</code></pre>`;
+    }
+}
+
+function setupServiceYAMLButtons(name, namespace, yaml) {
+    // Botão voltar
+    const backBtn = document.getElementById('backToServicesFromYamlBtn');
+    if (backBtn) {
+        backBtn.replaceWith(backBtn.cloneNode(true));
+        const newBackBtn = document.getElementById('backToServicesFromYamlBtn');
+        newBackBtn.addEventListener('click', () => {
+            switchSection('services');
+            loadCurrentSection();
+        });
+    }
+    
+    // Botão copiar
+    const copyBtn = document.getElementById('copyServiceYamlBtn');
+    if (copyBtn) {
+        copyBtn.replaceWith(copyBtn.cloneNode(true));
+        const newCopyBtn = document.getElementById('copyServiceYamlBtn');
+        newCopyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(yaml);
+                showToast('YAML copiado para a área de transferência!', 'success');
+            } catch (error) {
+                console.error('Erro ao copiar YAML:', error);
+                showToast('Erro ao copiar YAML', 'error');
+            }
+        });
+    }
+    
+    // Botão download
+    const downloadBtn = document.getElementById('downloadServiceYamlBtn');
+    if (downloadBtn) {
+        downloadBtn.replaceWith(downloadBtn.cloneNode(true));
+        const newDownloadBtn = document.getElementById('downloadServiceYamlBtn');
+        newDownloadBtn.addEventListener('click', () => {
+            try {
+                const blob = new Blob([yaml], { type: 'text/yaml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${name}-${namespace}.yaml`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('YAML baixado com sucesso!', 'success');
+            } catch (error) {
+                console.error('Erro ao baixar YAML:', error);
+                showToast('Erro ao baixar YAML', 'error');
+            }
+        });
+    }
+}
+
 async function showDeploymentYAML(name, namespace) {
     try {
         showLoading(true);
@@ -1161,7 +1526,7 @@ async function loadCurrentSection() {
                 await loadDeployments();
                 break;
             case 'services':
-                // Implementar quando necessário
+                await loadServices();
                 break;
             case 'namespaces':
                 await loadNamespaces();
@@ -1738,6 +2103,24 @@ function switchSection(section) {
         }
         // Pausar auto-refresh na seção de YAML
         stopAutoRefresh();
+    } else if (section === 'serviceDetails') {
+        // Esconder header na seção de detalhes de service
+        elements.dashboardHeader.classList.add('hidden');
+        // Adicionar classe especial ao dashboard-content
+        if (dashboardContent) {
+            dashboardContent.classList.add('logs-active');
+        }
+        // Pausar auto-refresh na seção de detalhes
+        stopAutoRefresh();
+    } else if (section === 'serviceYaml') {
+        // Esconder header na seção de YAML de service
+        elements.dashboardHeader.classList.add('hidden');
+        // Adicionar classe especial ao dashboard-content
+        if (dashboardContent) {
+            dashboardContent.classList.add('logs-active');
+        }
+        // Pausar auto-refresh na seção de YAML
+        stopAutoRefresh();
     } else {
         // Mostrar header nas outras seções
         elements.dashboardHeader.classList.remove('hidden');
@@ -1831,6 +2214,8 @@ function filterCurrentSection() {
         loadPods();
     } else if (currentSection === 'deployments' && currentConnectionId) {
         loadDeployments();
+    } else if (currentSection === 'services' && currentConnectionId) {
+        loadServices();
     }
 }
 
@@ -4007,7 +4392,7 @@ async function loadCurrentSectionSilently() {
                 await loadDeployments();
                 break;
             case 'services':
-                // Implementar quando necessário
+                await loadServices();
                 break;
             case 'namespaces':
                 await loadNamespaces();
