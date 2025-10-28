@@ -223,3 +223,5 @@ class ServiceDetails {
 // Instância global
 window.serviceDetails = new ServiceDetails();
 
+
+
