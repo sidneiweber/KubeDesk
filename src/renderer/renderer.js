@@ -943,7 +943,7 @@ async function loadDeployments() {
             
             // Definir a ordem das colunas conforme definido em DEPLOYMENTS_COLUMNS
             const columnOrder = [
-                { key: 'name', content: `<td class="deployment-name">${deployment.name}</td>` },
+                { key: 'name', content: `<td class="deployment-name" data-deployment-name="${deployment.name}" data-deployment-namespace="${deployment.namespace}"><span class="deployment-name-link">${deployment.name}</span></td>` },
                 { key: 'namespace', content: `<td class="deployment-namespace">${namespaceDisplay}</td>` },
                 { key: 'status', content: `<td><span class="status-${statusClass}">${statusText}</span></td>` },
                 { key: 'ready', content: `<td><span class="${deployment.readyReplicas === deployment.replicas ? 'ready-ready' : 'ready-not-ready'}">${deployment.ready}</span></td>` },
@@ -961,6 +961,30 @@ async function loadDeployments() {
             });
 
             row.innerHTML = cells.join('');
+            
+            // Adicionar event listeners
+            const deploymentNameCell = row.querySelector('.deployment-name');
+            if (deploymentNameCell) {
+                // Context menu para nome do deployment
+                deploymentNameCell.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    const deploymentName = deploymentNameCell.dataset.deploymentName;
+                    const namespace = deploymentNameCell.dataset.deploymentNamespace;
+                    showDeploymentContextMenu(e, deploymentName, namespace);
+                });
+            }
+            
+            // Click no nome do deployment para abrir detalhes
+            const deploymentNameLink = row.querySelector('.deployment-name-link');
+            if (deploymentNameLink) {
+                deploymentNameLink.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const deploymentName = row.querySelector('.deployment-name').dataset.deploymentName;
+                    const namespace = row.querySelector('.deployment-name').dataset.deploymentNamespace;
+                    showDeploymentDetails(deploymentName, namespace);
+                });
+            }
+            
             elements.deploymentsTableBody.appendChild(row);
         });
 
@@ -993,17 +1017,6 @@ async function loadDeployments() {
                 const name = row.dataset.deploymentName;
                 const namespace = row.dataset.deploymentNamespace;
                 await showDeploymentYAML(name, namespace);
-            });
-        });
-
-        // Adicionar event listeners para menu de contexto nos nomes dos deployments
-        elements.deploymentsTableBody.querySelectorAll('.deployment-name').forEach(cell => {
-            cell.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                const row = cell.closest('tr');
-                const name = row.dataset.deploymentName;
-                const namespace = row.dataset.deploymentNamespace;
-                showDeploymentContextMenu(name, namespace);
             });
         });
 
@@ -1091,7 +1104,7 @@ async function loadServices() {
                     : '-');
 
             row.innerHTML = `
-                <td><span class="service-name">${service.metadata.name}</span></td>
+                <td><span class="service-name-link" data-service-name="${service.metadata.name}" data-service-namespace="${service.metadata.namespace}">${service.metadata.name}</span></td>
                 <td>${namespaceDisplay}</td>
                 <td>${service.spec.type}</td>
                 <td>${service.spec.clusterIP || '-'}</td>
@@ -1105,6 +1118,17 @@ async function loadServices() {
                 e.preventDefault();
                 showServiceContextMenu(e, service.metadata.name, service.metadata.namespace);
             });
+
+            // Click no nome do service para abrir detalhes
+            const serviceNameLink = row.querySelector('.service-name-link');
+            if (serviceNameLink) {
+                serviceNameLink.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const serviceName = serviceNameLink.dataset.serviceName;
+                    const namespace = serviceNameLink.dataset.serviceNamespace;
+                    showServiceDetails(serviceName, namespace);
+                });
+            }
             
             elements.servicesTableBody.appendChild(row);
         }
@@ -1757,7 +1781,7 @@ function createPodRow(pod) {
     
     // Definir a ordem das colunas conforme definido em PODS_COLUMNS
     const columnOrder = [
-        { key: 'name', content: `<td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}">${pod.name}</td>` },
+        { key: 'name', content: `<td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}"><span class="pod-name-link">${pod.name}</span></td>` },
         { key: 'namespace', content: `<td class="pod-namespace">${namespaceDisplay}</td>` },
         { key: 'status', content: `<td><span class="status-${pod.status.toLowerCase()}">${pod.status}</span></td>` },
         { key: 'ready', content: `<td><span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span></td>` },
@@ -1793,7 +1817,18 @@ function addPodRowListeners(row) {
             e.preventDefault();
             const podName = e.target.dataset.podName;
             const podNamespace = e.target.dataset.podNamespace;
-            showPodContextMenu(podName, podNamespace);
+            showPodContextMenu(e, podName, podNamespace);
+        });
+    }
+
+    // Click no nome do pod para abrir detalhes
+    const podNameLink = row.querySelector('.pod-name-link');
+    if (podNameLink) {
+        podNameLink.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const podName = row.querySelector('.pod-name').dataset.podName;
+            const podNamespace = row.querySelector('.pod-name').dataset.podNamespace;
+            showPodDetails(podName, podNamespace);
         });
     }
 
@@ -3117,12 +3152,54 @@ function showLogsModeIndicator(mode) {
 }
 
 // Função para mostrar menu de contexto do pod
-async function showPodContextMenu(podName, podNamespace) {
-    try {
-        await ipcRenderer.invoke('show-context-menu', podName, podNamespace);
-    } catch (error) {
-        console.error('Erro ao mostrar menu de contexto:', error);
+function showPodContextMenu(event, podName, podNamespace) {
+    event.stopPropagation();
+    
+    // Remove menu anterior se existir
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+        existingMenu.remove();
     }
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = event.pageX + 'px';
+    menu.style.top = event.pageY + 'px';
+    menu.style.zIndex = '1000';
+
+    menu.innerHTML = `
+        <div class="context-menu-item" onclick="showPodLogs('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-file-text"></i>
+            Ver Logs
+        </div>
+        <div class="context-menu-item" onclick="showPodDetails('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-eye"></i>
+            Detalhes
+        </div>
+        <div class="context-menu-item" onclick="showPodYaml('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-file-code"></i>
+            YAML
+        </div>
+        <div class="context-menu-item" onclick="reloadPod('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-arrow-clockwise"></i>
+            Reiniciar
+        </div>
+    `;
+
+    document.body.appendChild(menu);
+
+    // Remove menu ao clicar fora
+    const removeMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', removeMenu);
+        }
+    };
+
+    setTimeout(() => {
+        document.addEventListener('click', removeMenu);
+    }, 100);
 }
 
 // Função para lidar com ações do menu de contexto
@@ -3169,12 +3246,58 @@ function handleDeploymentContextMenuAction(action, data) {
 }
 
 // Função para mostrar menu de contexto de deployment
-async function showDeploymentContextMenu(deploymentName, deploymentNamespace) {
-    try {
-        await ipcRenderer.invoke('show-deployment-context-menu', deploymentName, deploymentNamespace);
-    } catch (error) {
-        console.error('Erro ao mostrar menu de contexto:', error);
+function showDeploymentContextMenu(event, deploymentName, deploymentNamespace) {
+    event.stopPropagation();
+    
+    // Remove menu anterior se existir
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+        existingMenu.remove();
     }
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = event.pageX + 'px';
+    menu.style.top = event.pageY + 'px';
+    menu.style.zIndex = '1000';
+
+    menu.innerHTML = `
+        <div class="context-menu-item" onclick="showDeploymentLogs('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-file-text"></i>
+            Ver Logs
+        </div>
+        <div class="context-menu-item" onclick="showDeploymentDetails('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-eye"></i>
+            Detalhes
+        </div>
+        <div class="context-menu-item" onclick="showDeploymentYAML('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-file-code"></i>
+            YAML
+        </div>
+        <div class="context-menu-item" onclick="restartDeployment('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-arrow-clockwise"></i>
+            Reiniciar
+        </div>
+        <div class="context-menu-item" onclick="scaleDeployment('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
+            <i class="bi bi-arrows-fullscreen"></i>
+            Escalar
+        </div>
+    `;
+
+    document.body.appendChild(menu);
+
+    // Remove menu ao clicar fora
+    const removeMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', removeMenu);
+        }
+    };
+
+    setTimeout(() => {
+        document.addEventListener('click', removeMenu);
+    }, 100);
 }
 
 // Função para mostrar logs de um deployment (logs agregados de todos os pods)
@@ -4466,4 +4589,15 @@ function showToast(message, type = 'info') {
         }, 300);
     }, 3000);
 }
+
+// Adicionar funções ao escopo global para uso em onclick handlers
+window.showPodLogs = showPodLogs;
+window.showPodDetails = showPodDetails;
+window.showPodYaml = showPodYaml;
+window.reloadPod = reloadPod;
+window.showDeploymentLogs = showDeploymentLogs;
+window.showDeploymentDetails = showDeploymentDetails;
+window.showDeploymentYAML = showDeploymentYAML;
+window.restartDeployment = restartDeployment;
+window.scaleDeployment = scaleDeployment;
 

@@ -1022,15 +1022,22 @@ body {
 /* Pod name styling */
 .pod-name {
     font-weight: 500;
-    color: #e5e5e5;
     cursor: context-menu;
     padding: 8px 12px;
     border-radius: 4px;
     position: relative;
 }
 
-.pod-name:hover {
+.pod-name-link {
     color: #4a9eff;
+    text-decoration: none;
+    cursor: pointer;
+    display: inline-block;
+}
+
+.pod-name-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
 }
 
 .pod-namespace {
@@ -2136,16 +2143,6 @@ oast notification styles */
     cursor: pointer;
 }
 
-.deployment-name {
-    font-weight: 500;
-    color: #e5e5e5;
-    cursor: context-menu;
-}
-
-.deployment-name:hover {
-    color: #4a9eff;
-}
-
 .deployment-images {
     max-width: 300px;
 }
@@ -2527,17 +2524,38 @@ s section specific styles */
 }
 
 /* Service name styling */
-.service-name {
+.service-name-link {
+    color: #4a9eff;
+    text-decoration: none;
+    cursor: pointer;
+    display: inline-block;
     font-weight: 500;
-    color: #e5e5e5;
+}
+
+.service-name-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
+}
+
+/* Deployment name styling */
+.deployment-name {
+    font-weight: 500;
     cursor: context-menu;
     padding: 8px 12px;
     border-radius: 4px;
     position: relative;
 }
 
-.service-name:hover {
+.deployment-name-link {
     color: #4a9eff;
+    text-decoration: none;
+    cursor: pointer;
+    display: inline-block;
+}
+
+.deployment-name-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
 }
 
 

@@ -976,7 +976,7 @@ ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
       }
     },
     {
-      label: '📊 Detalhes do Pod',
+      label: '📊 Detalhes',
       click: () => {
         event.sender.send('context-menu-action', 'show-details', { podName, podNamespace });
       }
@@ -991,7 +991,7 @@ ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
       type: 'separator'
     },
     {
-      label: '🔄 Recarregar Pod',
+      label: '🔄 Reiniciar',
       click: () => {
         event.sender.send('context-menu-action', 'reload-pod', { podName, podNamespace });
       }
@@ -1034,13 +1034,13 @@ ipcMain.handle('show-deployment-context-menu', async (event, deploymentName, dep
       type: 'separator'
     },
     {
-      label: '🔄 Reiniciar Deployment',
+      label: '🔄 Reiniciar',
       click: () => {
         event.sender.send('deployment-context-menu-action', 'restart-deployment', { deploymentName, deploymentNamespace });
       }
     },
     {
-      label: '📏 Escalar Deployment',
+      label: '📏 Escalar',
       click: () => {
         event.sender.send('deployment-context-menu-action', 'scale-deployment', { deploymentName, deploymentNamespace });
       }
