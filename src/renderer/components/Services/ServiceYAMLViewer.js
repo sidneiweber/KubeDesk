@@ -113,67 +113,23 @@ class ServiceYAMLViewer {
         // Limpa o conteúdo anterior
         container.innerHTML = '';
 
-        // Cria elemento pre com syntax highlighting básico
+        // Usar Prism com plugin de line-numbers
         const pre = document.createElement('pre');
-        pre.className = 'yaml-content';
-        pre.textContent = this.yamlContent;
-
-        // Aplica syntax highlighting básico
-        this.applySyntaxHighlighting(pre);
-
+        pre.className = 'line-numbers';
+        const code = document.createElement('code');
+        code.className = 'language-yaml';
+        code.textContent = this.yamlContent;
+        pre.appendChild(code);
         container.appendChild(pre);
+        if (window.Prism) {
+            window.Prism.highlightElement(code);
+        }
     }
 
     /**
      * Aplica syntax highlighting básico
      */
-    applySyntaxHighlighting(element) {
-        const content = element.textContent;
-        const lines = content.split('\n');
-        
-        let highlightedHTML = '';
-        
-        lines.forEach(line => {
-            if (line.trim() === '') {
-                highlightedHTML += line + '\n';
-                return;
-            }
-
-            // Destaque para chaves YAML
-            if (line.match(/^\s*[a-zA-Z][a-zA-Z0-9_-]*:/)) {
-                highlightedHTML += line.replace(
-                    /^(\s*)([a-zA-Z][a-zA-Z0-9_-]*)(:)/,
-                    '$1<span class="yaml-key">$2</span>$3'
-                ) + '\n';
-            }
-            // Destaque para valores string
-            else if (line.match(/^\s*-?\s*"[^"]*"$/)) {
-                highlightedHTML += line.replace(
-                    /"([^"]*)"/,
-                    '"<span class="yaml-string">$1</span>"'
-                ) + '\n';
-            }
-            // Destaque para valores numéricos
-            else if (line.match(/^\s*-?\s*\d+$/)) {
-                highlightedHTML += line.replace(
-                    /(\d+)/,
-                    '<span class="yaml-number">$1</span>'
-                ) + '\n';
-            }
-            // Destaque para valores boolean
-            else if (line.match(/^\s*-?\s*(true|false)$/)) {
-                highlightedHTML += line.replace(
-                    /(true|false)/,
-                    '<span class="yaml-boolean">$1</span>'
-                ) + '\n';
-            }
-            else {
-                highlightedHTML += line + '\n';
-            }
-        });
-
-        element.innerHTML = highlightedHTML;
-    }
+    applySyntaxHighlighting() {}
 
     /**
      * Copia o YAML para a área de transferência

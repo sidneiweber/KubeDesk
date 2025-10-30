@@ -224,6 +224,7 @@ const elements = {
     podDetailsTitle: document.getElementById('podDetailsTitle'),
     backToPodsFromDetailsBtn: document.getElementById('backToPodsFromDetailsBtn'),
     viewPodLogsBtn: document.getElementById('viewPodLogsBtn'),
+    viewPodYAMLBtn: document.getElementById('viewPodYAMLBtn'),
     
     // Service Details elements
     serviceDetailsTitle: document.getElementById('serviceDetailsTitle'),
@@ -373,6 +374,13 @@ elements.viewPodLogsBtn.addEventListener('click', () => {
         switchSection('podLogs');
         // Inicializar os logs do pod
         showPodLogs(currentPodName, currentPodNamespace);
+    }
+});
+
+// Pod YAML event listener
+elements.viewPodYAMLBtn?.addEventListener('click', () => {
+    if (currentPodName && currentPodNamespace) {
+        showPodYaml(currentPodName, currentPodNamespace);
     }
 });
 
@@ -1279,53 +1287,19 @@ function initializeServiceYamlEditor(yamlContent) {
     editorContainer.innerHTML = '';
 
     try {
-        // Criar container principal
-        const container = document.createElement('div');
-        container.className = 'yaml-editor-container';
-        
-        // Criar container para números de linha
-        const lineNumbersContainer = document.createElement('div');
-        lineNumbersContainer.className = 'yaml-line-numbers';
-        
-        // Criar container para o código
-        const codeContainer = document.createElement('div');
-        codeContainer.className = 'yaml-code-container';
-        
-        // Criar o pre com code
         const pre = document.createElement('pre');
+        pre.className = 'line-numbers';
         const code = document.createElement('code');
         code.className = 'language-yaml';
         code.textContent = yamlContent;
         pre.appendChild(code);
-        codeContainer.appendChild(pre);
-        
-        // Gerar números de linha
-        const lines = yamlContent.split('\n');
-        const lineNumbers = document.createElement('div');
-        lineNumbers.className = 'yaml-line-numbers-content';
-        
-        lines.forEach((_, index) => {
-            const lineNumber = document.createElement('div');
-            lineNumber.className = 'yaml-line-number';
-            lineNumber.textContent = index + 1;
-            lineNumbers.appendChild(lineNumber);
-        });
-        
-        lineNumbersContainer.appendChild(lineNumbers);
-        
-        // Adicionar containers ao editor
-        container.appendChild(lineNumbersContainer);
-        container.appendChild(codeContainer);
-        editorContainer.appendChild(container);
-        
-        // Aplicar syntax highlighting com Prism
+        editorContainer.appendChild(pre);
         if (typeof Prism !== 'undefined') {
             Prism.highlightElement(code);
         }
-        
     } catch (error) {
         console.error('Erro ao criar editor YAML:', error);
-        editorContainer.innerHTML = `<pre><code class="language-yaml">${yamlContent}</code></pre>`;
+        editorContainer.innerHTML = `<pre class="line-numbers"><code class="language-yaml">${yamlContent}</code></pre>`;
     }
 }
 
@@ -1430,53 +1404,19 @@ function initializeDeploymentYamlEditor(yamlContent) {
     editorContainer.innerHTML = '';
 
     try {
-        // Criar container principal
-        const container = document.createElement('div');
-        container.className = 'yaml-editor-container';
-        
-        // Criar container para números de linha
-        const lineNumbersContainer = document.createElement('div');
-        lineNumbersContainer.className = 'yaml-line-numbers';
-        
-        // Criar container para o código
-        const codeContainer = document.createElement('div');
-        codeContainer.className = 'yaml-code-container';
-        
-        // Criar o pre com code
         const pre = document.createElement('pre');
+        pre.className = 'line-numbers';
         const code = document.createElement('code');
         code.className = 'language-yaml';
         code.textContent = yamlContent;
         pre.appendChild(code);
-        codeContainer.appendChild(pre);
-        
-        // Gerar números de linha
-        const lines = yamlContent.split('\n');
-        const lineNumbers = document.createElement('div');
-        lineNumbers.className = 'yaml-line-numbers-content';
-        
-        lines.forEach((_, index) => {
-            const lineNumber = document.createElement('div');
-            lineNumber.className = 'yaml-line-number';
-            lineNumber.textContent = index + 1;
-            lineNumbers.appendChild(lineNumber);
-        });
-        
-        lineNumbersContainer.appendChild(lineNumbers);
-        
-        // Adicionar containers ao editor
-        container.appendChild(lineNumbersContainer);
-        container.appendChild(codeContainer);
-        editorContainer.appendChild(container);
-        
-        // Aplicar syntax highlighting com Prism
+        editorContainer.appendChild(pre);
         if (typeof Prism !== 'undefined') {
             Prism.highlightElement(code);
         }
-        
     } catch (error) {
         console.error('Erro ao criar editor YAML:', error);
-        editorContainer.innerHTML = `<pre><code class="language-yaml">${yamlContent}</code></pre>`;
+        editorContainer.innerHTML = `<pre class="line-numbers"><code class="language-yaml">${yamlContent}</code></pre>`;
     }
 }
 
@@ -1726,7 +1666,7 @@ function updatePodRow(row, pod) {
     
     // Definir a ordem das colunas conforme definido em PODS_COLUMNS
     const columnOrder = [
-        { key: 'name', update: (cell) => { cell.innerHTML = pod.name; } },
+        { key: 'name', update: (cell) => { cell.innerHTML = `<a href="#" class="pod-name-link" title="Ver detalhes">${pod.name}</a>`; } },
         { key: 'namespace', update: (cell) => { cell.innerHTML = namespaceDisplay; } },
         { key: 'status', update: (cell) => { cell.innerHTML = `<span class="status-${pod.status.toLowerCase()}">${pod.status}</span>`; } },
         { key: 'ready', update: (cell) => { cell.innerHTML = `<span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span>`; } },
@@ -1745,6 +1685,24 @@ function updatePodRow(row, pod) {
             cellIndex++;
         }
     });
+
+    // Garantir que o link do nome do pod permaneça funcional após updates
+    const podNameLink = row.querySelector('.pod-name-link');
+    if (podNameLink) {
+        const newLink = podNameLink.cloneNode(true);
+        podNameLink.parentNode.replaceChild(newLink, podNameLink);
+        newLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const podNameCell = row.querySelector('.pod-name');
+            if (!podNameCell) return;
+            const podNameVal = podNameCell.dataset.podName;
+            const podNamespaceVal = podNameCell.dataset.podNamespace;
+            if (podNameVal && podNamespaceVal) {
+                showPodDetails(podNameVal, podNamespaceVal);
+            }
+        });
+    }
 
     // Re-adicionar event listeners para as barras de progresso
     addProgressBarListeners(row);
@@ -1781,7 +1739,7 @@ function createPodRow(pod) {
     
     // Definir a ordem das colunas conforme definido em PODS_COLUMNS
     const columnOrder = [
-        { key: 'name', content: `<td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}"><span class="pod-name-link">${pod.name}</span></td>` },
+        { key: 'name', content: `<td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}"><a href="#" class="pod-name-link" title="Ver detalhes">${pod.name}</a></td>` },
         { key: 'namespace', content: `<td class="pod-namespace">${namespaceDisplay}</td>` },
         { key: 'status', content: `<td><span class="status-${pod.status.toLowerCase()}">${pod.status}</span></td>` },
         { key: 'ready', content: `<td><span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span></td>` },
@@ -1815,9 +1773,12 @@ function addPodRowListeners(row) {
     if (podNameCell) {
         podNameCell.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            const podName = e.target.dataset.podName;
-            const podNamespace = e.target.dataset.podNamespace;
-            showPodContextMenu(e, podName, podNamespace);
+            const cell = e.currentTarget;
+            const podName = cell && cell.dataset ? cell.dataset.podName : null;
+            const podNamespace = cell && cell.dataset ? cell.dataset.podNamespace : null;
+            if (podName && podNamespace) {
+                showPodContextMenu(e, podName, podNamespace);
+            }
         });
     }
 
@@ -3991,50 +3952,16 @@ function initializeYamlEditor(yamlContent) {
     elements.yamlEditor.innerHTML = '';
 
     try {
-        // Criar container principal
-        const editorContainer = document.createElement('div');
-        editorContainer.className = 'yaml-editor-container';
-        
-        // Criar container para números de linha
-        const lineNumbersContainer = document.createElement('div');
-        lineNumbersContainer.className = 'yaml-line-numbers';
-        
-        // Criar container para o código
-        const codeContainer = document.createElement('div');
-        codeContainer.className = 'yaml-code-container';
-        
-        // Criar o pre com code
         const pre = document.createElement('pre');
+        pre.className = 'line-numbers';
         const code = document.createElement('code');
         code.className = 'language-yaml';
         code.textContent = yamlContent;
         pre.appendChild(code);
-        codeContainer.appendChild(pre);
-        
-        // Gerar números de linha
-        const lines = yamlContent.split('\n');
-        const lineNumbers = document.createElement('div');
-        lineNumbers.className = 'yaml-line-numbers-content';
-        
-        lines.forEach((_, index) => {
-            const lineNumber = document.createElement('div');
-            lineNumber.className = 'yaml-line-number';
-            lineNumber.textContent = index + 1;
-            lineNumbers.appendChild(lineNumber);
-        });
-        
-        lineNumbersContainer.appendChild(lineNumbers);
-        
-        // Adicionar containers ao editor
-        editorContainer.appendChild(lineNumbersContainer);
-        editorContainer.appendChild(codeContainer);
-        elements.yamlEditor.appendChild(editorContainer);
-        
-        // Aplicar syntax highlighting com Prism
+        elements.yamlEditor.appendChild(pre);
         if (typeof Prism !== 'undefined') {
             Prism.highlightElement(code);
         }
-        
     } catch (error) {
         console.error('Erro ao criar editor YAML:', error);
         elements.yamlEditor.innerHTML = '<div style="padding: 20px; color: #f14c4c;">Erro ao criar editor: ' + error.message + '</div>';
