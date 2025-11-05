@@ -1,91 +1,129 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
+interface Deployment {
+    name: string;
+    namespace: string;
+    ready: string;
+    upToDate: number;
+    available: number;
+    age: string;
+    replicas: number;
+    readyReplicas: number;
+    containerImages: { name: string, image: string }[];
+    strategy: string;
+}
+
+type ActionHandler = (name: string, namespace: string) => void;
+
 class DeploymentsTable {
-    constructor(containerSelector) {
-        this.deployments = [];
-        this.filteredDeployments = [];
-        this.searchTerm = '';
-        this.onViewLogs = null;
-        this.onViewDetails = null;
-        this.onViewYAML = null;
-        this.container = document.querySelector(containerSelector);
+    private container: HTMLElement;
+    private tableBody: HTMLTableSectionElement | null;
+    private deployments: Deployment[] = [];
+    private filteredDeployments: Deployment[] = [];
+    private searchTerm = '';
+
+    public onViewLogs: ActionHandler | null = null;
+    public onViewDetails: ActionHandler | null = null;
+    public onViewYAML: ActionHandler | null = null;
+
+    constructor(containerSelector: string) {
+        this.container = document.querySelector(containerSelector) as HTMLElement;
         this.tableBody = null;
     }
-    initialize() {
+
+    public initialize(): this {
         if (!this.container) {
             console.error('Container da tabela de deployments não encontrado');
             return this;
         }
+
         this.tableBody = this.container.querySelector('#deploymentsTableBody');
         if (!this.tableBody) {
             console.error('Tbody da tabela de deployments não encontrado');
             return this;
         }
+
         return this;
     }
-    setOnViewLogs(handler) {
+
+    public setOnViewLogs(handler: ActionHandler): this {
         this.onViewLogs = handler;
         return this;
     }
-    setOnViewDetails(handler) {
+
+    public setOnViewDetails(handler: ActionHandler): this {
         this.onViewDetails = handler;
         return this;
     }
-    setOnViewYAML(handler) {
+
+    public setOnViewYAML(handler: ActionHandler): this {
         this.onViewYAML = handler;
         return this;
     }
-    updateDeployments(deployments) {
+
+    public updateDeployments(deployments: Deployment[]): void {
         this.deployments = deployments;
         this.applyFilter();
         this.render();
     }
-    setSearchTerm(term) {
+
+    public setSearchTerm(term: string): void {
         this.searchTerm = term.toLowerCase().trim();
         this.applyFilter();
         this.render();
     }
-    applyFilter() {
+
+    private applyFilter(): void {
         if (!this.searchTerm) {
             this.filteredDeployments = [...this.deployments];
             return;
         }
-        this.filteredDeployments = this.deployments.filter(deployment => deployment.name.toLowerCase().includes(this.searchTerm) ||
+
+        this.filteredDeployments = this.deployments.filter(deployment =>
+            deployment.name.toLowerCase().includes(this.searchTerm) ||
             deployment.namespace.toLowerCase().includes(this.searchTerm) ||
-            deployment.strategy.toLowerCase().includes(this.searchTerm));
+            deployment.strategy.toLowerCase().includes(this.searchTerm)
+        );
     }
-    render() {
-        if (!this.tableBody)
-            return;
+
+    private render(): void {
+        if (!this.tableBody) return;
+
         this.tableBody.innerHTML = '';
+
         if (this.filteredDeployments.length === 0) {
             this.renderEmptyState();
             return;
         }
+
         this.filteredDeployments.forEach(deployment => {
             const row = this.createDeploymentRow(deployment);
-            this.tableBody.appendChild(row);
+            this.tableBody!.appendChild(row);
         });
+
         this.attachEventListeners();
     }
-    renderEmptyState() {
+
+    private renderEmptyState(): void {
         const row = document.createElement('tr');
         const message = this.searchTerm
             ? 'Nenhum deployment encontrado com o termo de busca'
             : 'Nenhum deployment encontrado';
+
         row.innerHTML = `<td colspan="8" class="no-data"><div class="no-data-message"><span>🚀</span><p>${message}</p></div></td>`;
-        this.tableBody.appendChild(row);
+        this.tableBody!.appendChild(row);
     }
-    createDeploymentRow(deployment) {
+
+    private createDeploymentRow(deployment: Deployment): HTMLElement {
         const row = document.createElement('tr');
         row.dataset.deploymentName = deployment.name;
         row.dataset.deploymentNamespace = deployment.namespace;
+
         const statusClass = this.getStatusClass(deployment);
         const statusText = this.getStatusText(deployment);
         const namespaceDisplay = this.shouldShowNamespaceBadge()
             ? `<span class="namespace-badge">${deployment.namespace}</span>`
             : deployment.namespace;
         const images = deployment.containerImages.map(c => `<div class="container-image" title="${c.name}: ${c.image}">${c.image}</div>`).join('');
+
         row.innerHTML = `
             <td class="deployment-name" data-deployment-name="${deployment.name}" data-deployment-namespace="${deployment.namespace}">${deployment.name}</td>
             <td class="deployment-namespace">${namespaceDisplay}</td>
@@ -96,28 +134,29 @@ class DeploymentsTable {
             <td>${deployment.age}</td>
             <td class="deployment-images">${images || '-'}</td>
         `;
+
         return row;
     }
-    getStatusClass(deployment) {
-        if (deployment.readyReplicas === deployment.replicas && deployment.replicas > 0)
-            return 'running';
-        if (deployment.readyReplicas > 0)
-            return 'pending';
+
+    private getStatusClass(deployment: Deployment): string {
+        if (deployment.readyReplicas === deployment.replicas && deployment.replicas > 0) return 'running';
+        if (deployment.readyReplicas > 0) return 'pending';
         return 'failed';
     }
-    getStatusText(deployment) {
-        if (deployment.readyReplicas === deployment.replicas && deployment.replicas > 0)
-            return 'Ready';
-        if (deployment.readyReplicas > 0)
-            return 'Progressing';
+
+    private getStatusText(deployment: Deployment): string {
+        if (deployment.readyReplicas === deployment.replicas && deployment.replicas > 0) return 'Ready';
+        if (deployment.readyReplicas > 0) return 'Progressing';
         return 'Unavailable';
     }
-    shouldShowNamespaceBadge() {
-        const namespaceSelect = document.getElementById('namespaceSelect');
+
+    private shouldShowNamespaceBadge(): boolean {
+        const namespaceSelect = document.getElementById('namespaceSelect') as HTMLSelectElement;
         return namespaceSelect && namespaceSelect.value === 'all';
     }
-    attachEventListeners() {
-        this.tableBody.querySelectorAll('tr').forEach(row => {
+
+    private attachEventListeners(): void {
+        this.tableBody!.querySelectorAll('tr').forEach(row => {
             if (!row.classList.contains('no-data')) {
                 row.addEventListener('click', () => {
                     const name = row.dataset.deploymentName;
@@ -129,14 +168,16 @@ class DeploymentsTable {
             }
         });
     }
-    getCount() {
+
+    public getCount(): number {
         return this.filteredDeployments.length;
     }
-    clear() {
+
+    public clear(): void {
         this.deployments = [];
         this.filteredDeployments = [];
         this.render();
     }
 }
-exports.default = DeploymentsTable;
-//# sourceMappingURL=DeploymentsTable.js.map
+
+export default DeploymentsTable;

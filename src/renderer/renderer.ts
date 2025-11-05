@@ -1,3 +1,1 @@
-"use strict";
 // ... (conteúdo completo e tipado de renderer.ts) ...
-//# sourceMappingURL=renderer.js.map

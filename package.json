@@ -2,20 +2,22 @@
   "name": "kubedesk",
   "version": "0.0.2",
   "description": "Ferramenta para gerenciar clusters Kubernetes",
-  "main": "src/main.js",
+  "main": "build/main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
+    "start": "npm run build:ts && electron .",
+    "dev": "npm run build:ts && electron . --dev",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "build:linux": "electron-builder --linux",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:all": "electron-builder --linux --win --mac",
-    "clean": "rm -rf dist",
+    "dist": "npm run build:ts && electron-builder",
+    "build:linux": "npm run build:ts && electron-builder --linux",
+    "build:win": "npm run build:ts && electron-builder --win",
+    "build:mac": "npm run build:ts && electron-builder --mac",
+    "build:all": "npm run build:ts && npm run build:renderer && electron-builder --linux --win --mac",
+    "clean": "rm -rf dist build",
     "test:build": "./test-build.sh",
-    "prebuild": "npm run clean"
+    "prebuild": "npm run clean && npm run build:ts && npm run build:renderer",
+    "build:ts": "tsc",
+    "build:renderer": "node build-renderer.js"
   },
   "keywords": [
     "kubernetes",
@@ -26,17 +28,21 @@
   "author": "Sidnei",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^24.10.0",
     "electron": "^28.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "esbuild": "^0.25.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@kubernetes/client-node": "^0.21.0",
-    "js-yaml": "^4.1.0",
-    "node-fetch": "^3.3.2",
-    "@xterm/xterm": "^5.5.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.15.0",
     "@xterm/addon-web-links": "^0.11.0",
-    "ansi-to-html": "^0.7.2"
+    "@xterm/xterm": "^5.5.0",
+    "ansi-to-html": "^0.7.2",
+    "js-yaml": "^4.1.0",
+    "node-fetch": "^3.3.2"
   }
 }

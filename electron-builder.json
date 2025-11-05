@@ -6,6 +6,7 @@
     "buildResources": "assets"
   },
   "files": [
+    "build/**/*",
     "src/**/*",
     "assets/**/*",
     "package.json"

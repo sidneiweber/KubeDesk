@@ -1,33 +1,49 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-class DeploymentYAMLViewer {
-    constructor(containerSelector) {
-        this.yamlContent = '';
-        this.deploymentName = '';
-        this.deploymentNamespace = '';
-        this.onBack = null;
-        this.container = document.querySelector(containerSelector);
+declare const Prism: any;
+
+declare global {
+    interface Window {
+        showToast: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
     }
-    initialize() {
+}
+
+type ActionHandler = () => void;
+
+class DeploymentYAMLViewer {
+    private container: HTMLElement;
+    private yamlContent = '';
+    private deploymentName = '';
+    private deploymentNamespace = '';
+
+    public onBack: ActionHandler | null = null;
+
+    constructor(containerSelector: string) {
+        this.container = document.querySelector(containerSelector) as HTMLElement;
+    }
+
+    public initialize(): this {
         if (!this.container) {
             console.error('Container do YAML viewer não encontrado');
         }
         return this;
     }
-    setOnBack(handler) {
+
+    public setOnBack(handler: ActionHandler): this {
         this.onBack = handler;
         return this;
     }
-    showYAML(name, namespace, yamlContent) {
+
+    public showYAML(name: string, namespace: string, yamlContent: string): void {
         this.deploymentName = name;
         this.deploymentNamespace = namespace;
         this.yamlContent = yamlContent;
         this.render();
     }
-    render() {
-        if (!this.container)
-            return;
+
+    private render(): void {
+        if (!this.container) return;
+
         const escapedYAML = this.escapeHtml(this.yamlContent);
+
         this.container.innerHTML = `
             <div class="yaml-viewer-container">
                 <div class="yaml-viewer-header">
@@ -40,29 +56,33 @@ class DeploymentYAMLViewer {
                 <pre><code class="language-yaml">${escapedYAML}</code></pre>
             </div>
         `;
+
         this.attachEventListeners();
         Prism.highlightAllUnder(this.container);
     }
-    attachEventListeners() {
+
+    private attachEventListeners(): void {
         const copyBtn = this.container.querySelector('#copyYAMLBtn');
         if (copyBtn) {
             copyBtn.addEventListener('click', () => this.copyToClipboard());
         }
+
         const downloadBtn = this.container.querySelector('#downloadYAMLBtn');
         if (downloadBtn) {
             downloadBtn.addEventListener('click', () => this.downloadYAML());
         }
     }
-    async copyToClipboard() {
+
+    private async copyToClipboard(): Promise<void> {
         try {
             await navigator.clipboard.writeText(this.yamlContent);
             this.showToast('YAML copiado!', 'success');
-        }
-        catch (error) {
+        } catch (error) {
             this.showToast('Erro ao copiar YAML', 'error');
         }
     }
-    downloadYAML() {
+
+    private downloadYAML(): void {
         try {
             const blob = new Blob([this.yamlContent], { type: 'text/yaml' });
             const url = URL.createObjectURL(blob);
@@ -71,12 +91,12 @@ class DeploymentYAMLViewer {
             a.download = `${this.deploymentName}.yaml`;
             a.click();
             URL.revokeObjectURL(url);
-        }
-        catch (error) {
+        } catch (error) {
             this.showToast('Erro ao baixar YAML', 'error');
         }
     }
-    escapeHtml(text) {
+
+    private escapeHtml(text: string): string {
         return text.replace(/[&<>"']/g, (match) => {
             switch (match) {
                 case '&': return '&amp;';
@@ -88,15 +108,16 @@ class DeploymentYAMLViewer {
             }
         });
     }
-    showToast(message, type = 'info') {
+
+    private showToast(message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
         if (window.showToast) {
             window.showToast(message, type);
-        }
-        else {
+        } else {
             console.log(`[${type.toUpperCase()}] ${message}`);
         }
     }
-    clear() {
+
+    public clear(): void {
         if (this.container) {
             this.container.innerHTML = '';
         }
@@ -105,5 +126,5 @@ class DeploymentYAMLViewer {
         this.deploymentNamespace = '';
     }
 }
-exports.default = DeploymentYAMLViewer;
-//# sourceMappingURL=DeploymentYAMLViewer.js.map
+
+export default DeploymentYAMLViewer;
