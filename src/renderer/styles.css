@@ -184,7 +184,7 @@ body {
 .navigation h3 {
     color: #e5e5e5;
     margin-bottom: 15px;
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 500;
 }
 
@@ -193,7 +193,7 @@ body {
 }
 
 .nav-menu li {
-    margin-bottom: 5px;
+    margin-bottom: 2px;
 }
 
 .nav-link {
@@ -203,6 +203,7 @@ body {
     text-decoration: none;
     border-radius: 6px;
     transition: all 0.2s ease;
+    font-size: 0.9rem;
 }
 
 .nav-link:hover {
@@ -1021,15 +1022,22 @@ body {
 /* Pod name styling */
 .pod-name {
     font-weight: 500;
-    color: #e5e5e5;
     cursor: context-menu;
     padding: 8px 12px;
     border-radius: 4px;
     position: relative;
 }
 
-.pod-name:hover {
+.pod-name-link {
     color: #4a9eff;
+    text-decoration: none;
+    cursor: pointer;
+    display: inline-block;
+}
+
+.pod-name-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
 }
 
 .pod-namespace {
@@ -1717,7 +1725,9 @@ body {
 #backToPodsFromYamlBtn,
 #backToDeploymentsBtn,
 #backToDeploymentsFromLogsBtn,
-#backToDeploymentDetailsBtn {
+#backToDeploymentDetailsBtn,
+#backToServicesFromDetailsBtn,
+#backToServicesFromYamlBtn {
     padding: 6px 8px;
     min-width: 32px;
     width: auto;
@@ -1731,9 +1741,27 @@ body {
 #backToPodsFromYamlBtn .btn-icon,
 #backToDeploymentsBtn .btn-icon,
 #backToDeploymentsFromLogsBtn .btn-icon,
-#backToDeploymentDetailsBtn .btn-icon {
+#backToDeploymentDetailsBtn .btn-icon,
+#backToServicesFromDetailsBtn .btn-icon,
+#backToServicesFromYamlBtn .btn-icon {
     font-size: 1rem;
     margin: 0;
+}
+
+/* Service details title styling */
+#serviceDetailsTitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Service YAML title styling */
+#serviceYamlTitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 /* Enhanced logs toolbar */
@@ -2115,16 +2143,6 @@ oast notification styles */
     cursor: pointer;
 }
 
-.deployment-name {
-    font-weight: 500;
-    color: #e5e5e5;
-    cursor: context-menu;
-}
-
-.deployment-name:hover {
-    color: #4a9eff;
-}
-
 .deployment-images {
     max-width: 300px;
 }
@@ -2413,6 +2431,134 @@ s section specific styles */
     height: 100%;
 }
 
+#servicesSection .table-container {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    height: 100%;
+}
+
+#servicesSection .section-header {
+    flex-shrink: 0;
+}
+
+#servicesSection {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#servicesSection.active {
+    display: flex !important;
+}
+
+/* Services table specific styles */
+#servicesSection .pods-table {
+    width: 100%;
+    border-collapse: collapse;
+    display: table;
+}
+
+#servicesSection .pods-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+#servicesSection .pods-table tbody {
+    display: table-row-group;
+}
+
+#servicesSection .pods-table th {
+    background-color: #404040;
+    color: #e5e5e5;
+    padding: 12px 15px;
+    text-align: left;
+    font-weight: 500;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #555;
+}
+
+#servicesSection .pods-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #404040;
+    color: #fff;
+    font-size: 0.9rem;
+}
+
+#servicesSection .pods-table tbody tr:hover {
+    background-color: #353535;
+}
+
+/* Context menu styles */
+.context-menu {
+    position: fixed;
+    background-color: #2d2d2d;
+    border: 1px solid #404040;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    min-width: 150px;
+    padding: 4px 0;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    color: #e5e5e5;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.context-menu-item:hover {
+    background-color: #404040;
+}
+
+.context-menu-item i {
+    margin-right: 8px;
+    font-size: 0.8rem;
+    width: 16px;
+    text-align: center;
+}
+
+/* Service name styling */
+.service-name-link {
+    color: #4a9eff;
+    text-decoration: none;
+    cursor: pointer;
+    display: inline-block;
+    font-weight: 500;
+}
+
+.service-name-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
+}
+
+/* Deployment name styling */
+.deployment-name {
+    font-weight: 500;
+    cursor: context-menu;
+    padding: 8px 12px;
+    border-radius: 4px;
+    position: relative;
+}
+
+.deployment-name-link {
+    color: #4a9eff;
+    text-decoration: none;
+    cursor: pointer;
+    display: inline-block;
+}
+
+.deployment-name-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
+}
+
+
 /* Ensure proper scrolling for pods table */
 .pods-table-wrapper {
     flex: 1;
@@ -2597,6 +2743,48 @@ s section specific styles */
     display: flex;
     flex: 1;
     z-index: 1000;
+}
+
+/* Service Details Section Styles */
+#serviceDetailsSection {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    background: #1e1e1e;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#serviceDetailsSection.active {
+    display: flex;
+    flex: 1;
+    z-index: 1000;
+}
+
+.service-details-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    width: 100%;
+}
+
+/* Custom scrollbar for service details */
+.service-details-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.service-details-container::-webkit-scrollbar-track {
+    background: #2d2d2d;
+    border-radius: 4px;
+}
+
+.service-details-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.service-details-container::-webkit-scrollbar-thumb:hover {
+    background: #666;
 }
 
 .pod-details-container {
@@ -2931,7 +3119,7 @@ s section specific styles */
 .progress-bar {
     width: 100%;
     height: 8px;
-    background: #2d2d2d;
+    background: #666;
     border-radius: 4px;
     overflow: hidden;
     margin-bottom: 8px;
@@ -2997,7 +3185,7 @@ s section specific styles */
     background: #1e1e1e;
     border: 1px solid #404040;
     border-radius: 8px;
-    overflow: hidden;
+    overflow: auto;
     margin-top: 20px;
 }
 
@@ -3007,7 +3195,7 @@ s section specific styles */
     height: 100%;
     min-height: 500px;
     position: relative;
-    overflow: hidden;
+    overflow: auto;
 }
 
 .yaml-editor-container {
@@ -3024,25 +3212,28 @@ s section specific styles */
     border-right: 1px solid #404040;
     overflow: hidden;
     user-select: none;
+    padding: 20px 10px;
 }
 
 .yaml-line-numbers-content {
-    padding: 20px 10px 20px 10px;
     font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
     font-size: 13px;
-    line-height: 1.5;
+    line-height: 1.6;
     color: #666666;
     text-align: right;
 }
 
 .yaml-line-number {
-    height: 19.5px; /* 13px * 1.5 line-height */
+    height: 20.8px; /* 13px * 1.6 line-height */
     display: flex;
     align-items: center;
     justify-content: flex-end;
     padding-right: 8px;
+    padding-top: 0;
     border-right: 1px solid transparent;
     transition: color 0.2s ease;
+    margin: 0;
+    line-height: 20.8px;
 }
 
 .yaml-line-number:hover {
@@ -3085,12 +3276,22 @@ s section specific styles */
     outline: none;
     font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
     font-size: 13px;
-    line-height: 1.5;
+    line-height: 1.6;
     white-space: pre;
     overflow-wrap: normal;
     tab-size: 2;
     color: #ffffff;
     min-height: 100%;
+}
+
+/* Prism line-numbers block scroll support */
+.yaml-editor pre.line-numbers {
+    margin: 0;
+    padding: 20px;
+    height: 100%;
+    max-height: 100%;
+    overflow: auto;
+    background: transparent;
 }
 
 /* Estilos para mensagens de erro do editor */
@@ -3157,6 +3358,28 @@ s section specific styles */
     flex: 1;
     min-height: 0;
 }
+
+/* Service YAML Section Styles */
+#serviceYamlSection {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    background: #1e1e1e;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#serviceYamlSection.active {
+    display: flex;
+    flex: 1;
+    z-index: 1000;
+}
+
+#serviceYamlSection .yaml-container {
+    flex: 1;
+    min-height: 0;
+}
+
 
 /* Modal Styles */
 .modal {
