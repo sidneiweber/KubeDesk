@@ -1,5 +1,4 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
 class DeploymentYAMLViewer {
     constructor(containerSelector) {
         this.yamlContent = '';
@@ -105,5 +104,6 @@ class DeploymentYAMLViewer {
         this.deploymentNamespace = '';
     }
 }
-exports.default = DeploymentYAMLViewer;
+// Tornar a classe disponível globalmente
+window.DeploymentYAMLViewer = DeploymentYAMLViewer;
 //# sourceMappingURL=DeploymentYAMLViewer.js.map

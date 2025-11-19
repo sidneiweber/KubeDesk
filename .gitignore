@@ -141,3 +141,7 @@ vite.config.ts.timestamp-*
 
 # Build output
 build/
+
+# Generated files from TypeScript compilation
+src/renderer/renderer.js
+src/renderer/renderer.js.map

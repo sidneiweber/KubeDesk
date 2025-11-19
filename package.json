@@ -16,7 +16,8 @@
     "clean": "rm -rf dist build",
     "test:build": "./test-build.sh",
     "prebuild": "npm run clean && npm run build:ts && npm run build:renderer",
-    "build:ts": "tsc",
+    "build:ts": "tsc && npm run copy:renderer",
+    "copy:renderer": "cp build/renderer/renderer.js src/renderer/renderer.js",
     "build:renderer": "node build-renderer.js"
   },
   "keywords": [

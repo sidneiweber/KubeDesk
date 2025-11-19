@@ -1,12 +1,883 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
-    <!-- ... (head content) ... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KubeDesk</title>
+    <link rel="stylesheet" href="fonts.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="xterm.css">
+    <link rel="stylesheet" href="bootstrap-icons.css">
+    <!-- Prism.js para syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
 </head>
+
 <body>
-    <!-- ... (body content) ... -->
+    <!-- Loading/Setup Screen -->
+    <div id="setupScreen" class="screen active">
+        <div class="setup-container">
+            <div class="setup-header">
+                <div class="logo">
+                    <img src="../../assets/icon.png" alt="KubeDesk Logo" class="logo-icon">
+                    <h1>KubeDesk</h1>
+                </div>
+                <p class="setup-subtitle">Conecte-se aos seus clusters Kubernetes</p>
+            </div>
+
+            <div class="setup-content">
+                <div class="config-card">
+                    <h2>Configuração do Cluster</h2>
+                    <p>Selecione seu arquivo kubeconfig para começar</p>
+
+                    <div class="config-form">
+                        <div class="config-input">
+                            <label for="kubeconfigPath">Arquivo Kubeconfig:</label>
+                            <div class="path-input-group">
+                                <input type="text" id="kubeconfigPath" placeholder="Caminho para kubeconfig" readonly>
+                                <button id="selectConfigBtn" class="btn-secondary">Selecionar</button>
+                            </div>
+                        </div>
+
+                        <div class="cluster-selection">
+                            <label for="clusterSelect">Cluster:</label>
+                            <select id="clusterSelect" disabled>
+                                <option value="">Selecione um cluster</option>
+                            </select>
+                        </div>
+
+                        <div class="setup-actions">
+                            <button id="connectBtn" class="btn-primary" disabled>
+                                <i class="bi bi-link"></i>
+                                Conectar ao Cluster
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setup-info">
+                    <h3>Como funciona:</h3>
+                    <div class="info-steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h4>Selecione o Kubeconfig</h4>
+                                <p>Escolha o arquivo de configuração do seu cluster</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h4>Escolha o Cluster</h4>
+                                <p>Selecione qual cluster deseja conectar</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h4>Conecte e Explore</h4>
+                                <p>Visualize e gerencie seus recursos Kubernetes</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-footer">
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-indicator disconnected"></span>
+                    <span>Pronto para conectar</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <img src="../../assets/icon.png" alt="KubeDesk Logo" class="logo-icon">
+                    <h2>KubeDesk</h2>
+                </div>
+                <div class="connection-status" id="mainConnectionStatus">
+                    <span class="status-indicator disconnected"></span>
+                    <span>Desconectado</span>
+                </div>
+            </div>
+
+            <div class="sidebar-content">
+                <div class="navigation" id="navigation">
+                    <h3>Workload</h3>
+                    <ul class="nav-menu">
+                        <li><a href="#" data-section="pods" class="nav-link active">Pods</a></li>
+                        <li><a href="#" data-section="deployments" class="nav-link">Deployments</a></li>
+                        <li><a href="#" data-section="namespaces" class="nav-link">Namespaces</a></li>
+                    </ul>
+                    <h3>Networking</h3>
+                    <ul class="nav-menu">
+                        <li><a href="#" data-section="services" class="nav-link">Services</a></li>
+                    </ul>
+                </div>
+
+                <div class="cluster-info" id="clusterInfo">
+                    <h3>Cluster Atual</h3>
+                    <div class="cluster-details">
+                        <div class="cluster-name" id="currentClusterName">-</div>
+                        <div class="cluster-namespace" id="currentClusterNamespace">-</div>
+                    </div>
+                    <button id="reconnectBtn" class="btn-secondary">
+                        <i class="bi bi-gear-wide-connected"></i>
+                        Reconectar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+
+            <!-- Main Dashboard -->
+            <div id="dashboardScreen" class="screen">
+                <div class="dashboard-header">
+                    <div class="breadcrumb">
+                        <span id="currentContext"></span>
+                        <span class="separator">></span>
+                        <span id="currentSection">Pods</span>
+                        <span class="separator">></span>
+                        <span id="currentSectionCount">0 pods</span>
+                        <!-- Contadores ocultos para sincronização -->
+                        <span id="podsCount" style="display: none;">0 pods</span>
+                        <span id="deploymentsCount" style="display: none;">0 deployments</span>
+                        <span id="servicesCount" style="display: none;">0 services</span>
+                        <span id="namespacesCount" style="display: none;">0 namespaces</span>
+                    </div>
+
+                    <div class="dashboard-controls">
+                        <div class="namespace-selector">
+                            <label for="namespaceSelect">Namespace:</label>
+                            <select id="namespaceSelect">
+                                <option value="all">Todos os namespaces</option>
+                            </select>
+                        </div>
+
+                        <div class="search-box">
+                            <input type="text" id="searchInput" placeholder="Buscar pods...">
+                        </div>
+
+                        <button id="refreshBtn" class="btn-secondary">
+                            <i class="bi bi-arrow-clockwise refresh-icon"></i>
+                            Atualizar
+                        </button>
+
+                        <button id="autoRefreshBtn" class="btn-secondary auto-refresh-enabled"
+                            title="Auto-atualização ativa (10s)">
+                            <i class="bi bi-alarm auto-refresh-icon"></i>
+                            Auto
+                        </button>
+
+                        <button id="podsColumnSelectorBtn" class="btn-secondary" title="Selecionar colunas">
+                            <i class="bi bi-columns"></i>
+                        </button>
+                        <button id="deploymentsColumnSelectorBtn" class="btn-secondary" title="Selecionar colunas" style="display: none;">
+                            <i class="bi bi-columns"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="dashboard-content">
+                    <!-- Loading indicator -->
+                    <div id="loadingIndicator" class="loading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Carregando...</p>
+                    </div>
+
+                    <!-- Error message -->
+                    <div id="errorMessage" class="error-message" style="display: none;">
+                        <div class="error-icon">⚠️</div>
+                        <div class="error-content">
+                            <h3>Erro</h3>
+                            <p id="errorText"></p>
+                        </div>
+                    </div>
+
+                    <!-- Pods Table -->
+                    <div id="podsSection" class="content-section active">
+                         <div class="table-container">
+                            <table class="pods-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Ready</th>
+                                        <th>Restarts</th>
+                                        <th>Age</th>
+                                        <th>CPU Usage</th>
+                                        <th>Memory Usage</th>
+                                        <th>Node</th>
+                                        <th>IP</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="podsTableBody">
+                                    <!-- Pods will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Deployments Section -->
+                    <div id="deploymentsSection" class="content-section">
+
+                        <div class="table-container">
+                            <table class="deployments-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Ready</th>
+                                        <th>Up-to-date</th>
+                                        <th>Available</th>
+                                        <th>Age</th>
+                                        <th>Images</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deploymentsTableBody">
+                                    <!-- Deployments will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Services Section -->
+                    <div id="servicesSection" class="content-section">
+                        <div class="table-container">
+                            <table class="pods-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Namespace</th>
+                                        <th>Tipo</th>
+                                        <th>Cluster IP</th>
+                                        <th>External IP</th>
+                                        <th>Portas</th>
+                                        <th>Age</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="servicesTableBody">
+                                    <!-- Services will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Namespaces Section -->
+                    <div id="namespacesSection" class="content-section">
+                        <div class="section-header">
+                            <h2>Namespaces</h2>
+                            <div class="section-stats">
+                                <span id="namespacesCount">0 namespaces</span>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table class="namespaces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Status</th>
+                                        <th>Age</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="namespacesTableBody">
+                                    <!-- Namespaces will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Pod Logs Section -->
+                    <div id="podLogsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="logs-header-left">
+                                <button id="backToPodsBtn" class="btn-secondary" title="Voltar aos Pods">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="podLogsTitle">Logs do Pod</h3>
+                            </div>
+                            <div class="logs-header-right">
+                                <div class="logs-controls">
+                                    <div class="container-selector">
+                                        <label for="containerSelect">Container:</label>
+                                        <select id="containerSelect">
+                                            <option value="">Todos os containers</option>
+                                        </select>
+                                    </div>
+                                    <div class="logs-options">
+                                        <button id="logsOptionsBtn" class="btn-secondary">
+                                            <i class="bi bi-gear-wide"></i>
+                                            Opções
+                                        </button>
+                                        <div id="logsOptionsMenu" class="dropdown-menu" style="display: none;">
+                                            <div class="dropdown-section">
+                                                <h4>Opções de Exibição</h4>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="lineWrapCheckbox" checked>
+                                                    Quebra de linha
+                                                </label>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="horizontalScrollCheckbox">
+                                                    Scroll horizontal
+                                                </label>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="logColoringCheckbox" checked>
+                                                    Cores nos logs
+                                                </label>
+                                            </div>
+                                            <div class="dropdown-section">
+                                                <h4>Timestamp</h4>
+                                                <label class="radio-label">
+                                                    <input type="radio" name="timestamp" value="off" checked>
+                                                    Desabilitado
+                                                </label>
+                                                <label class="radio-label">
+                                                    <input type="radio" name="timestamp" value="utc">
+                                                    UTC
+                                                </label>
+                                                <label class="radio-label">
+                                                    <input type="radio" name="timestamp" value="local">
+                                                    Local
+                                                </label>
+                                            </div>
+                                            <div class="dropdown-section">
+                                                <h4>Exportar</h4>
+                                                <button id="downloadCsvBtn" class="dropdown-btn">Baixar como CSV</button>
+                                                <button id="downloadTextBtn" class="dropdown-btn">Baixar como Texto</button>
+                                                <button id="copyCsvBtn" class="dropdown-btn">Copiar como CSV</button>
+                                                <button id="copyTextBtn" class="dropdown-btn">Copiar como Texto</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="logs-container">
+                            <div class="logs-toolbar">
+                                <div class="logs-search-box">
+                                    <input type="text" id="terminalSearchInput" placeholder="Buscar nos logs..." />
+                                    <button id="searchPrevBtn" title="Anterior">↑</button>
+                                    <button id="searchNextBtn" title="Próximo">↓</button>
+                                </div>
+                                <div class="logs-stats">
+                                    <span id="logsCount">0 logs</span>
+                                    <span id="logsRate">0/s</span>
+                                </div>
+                            </div>
+                            <div id="logsContent" class="logs-content">
+                                <!-- Terminal will be initialized here -->
+                            </div>
+                            <div class="logs-footer">
+                                <div class="logs-actions">
+                                    <button id="pauseLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-pause"></i>
+                                        Pausar
+                                    </button>
+                                    <button id="clearLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-recycle"></i>
+                                        Limpar
+                                    </button>
+                                    <button id="scrollTopBtn" class="btn-secondary">
+                                        <i class="bi bi-arrow-up"></i>
+                                        Topo
+                                    </button>
+                                    <button id="scrollBottomBtn" class="btn-secondary">
+                                        <i class="bi bi-arrow-down"></i>
+                                        Final
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pod Details Section -->
+                    <div id="podDetailsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="details-header-left">
+                                <button id="backToPodsFromDetailsBtn" class="btn-secondary" title="Voltar aos Pods">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="podDetailsTitle">Detalhes do Pod</h3>
+                            </div>
+                            <div class="details-header-right">
+                                <div class="pod-actions">
+                                    <button id="viewPodLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-journal-text"></i>
+                                        Logs
+                                    </button>
+                                    <button id="viewPodYAMLBtn" class="btn-secondary">
+                                        <i class="bi bi-file-earmark-code"></i>
+                                        YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pod-details-container">
+                            <div class="pod-details-content">
+                                <!-- Pod Overview -->
+                                <div class="details-section">
+                                    <h4>Informações Básicas</h4>
+                                    <div class="details-grid">
+                                        <div class="detail-item">
+                                            <label>Nome:</label>
+                                            <span id="podDetailName">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Namespace:</label>
+                                            <span id="podDetailNamespace">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Status:</label>
+                                            <span id="podDetailStatus" class="status-badge">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Idade:</label>
+                                            <span id="podDetailAge">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>IP do Pod:</label>
+                                            <span id="podDetailIP">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Node:</label>
+                                            <span id="podDetailNode">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Containers -->
+                                <div class="details-section">
+                                    <h4>Containers</h4>
+                                    <div id="podContainersList" class="containers-list">
+                                        <!-- Containers will be populated here -->
+                                    </div>
+                                </div>
+
+                                <!-- Labels and Annotations Side by Side -->
+                                <div class="details-section-group">
+                                    <div class="details-section">
+                                        <h4>Labels</h4>
+                                        <div id="podLabelsList" class="labels-list">
+                                            <!-- Labels will be populated here -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="details-section">
+                                        <h4>Annotations</h4>
+                                        <div id="podAnnotationsList" class="annotations-list">
+                                            <!-- Annotations will be populated here -->
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Environment Variables -->
+                                <div class="details-section">
+                                    <h4>Environment Variables</h4>
+                                    <div id="podEnvVarsList" class="env-vars-list">
+                                        <!-- Environment variables will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pod YAML Section -->
+                    <div id="podYamlSection" class="content-section">
+                        <div class="section-header">
+                            <div class="yaml-header-left">
+                                <button id="backToPodsFromYamlBtn" class="btn-secondary" title="Voltar aos Pods">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="podYamlTitle">YAML do Pod</h3>
+                            </div>
+                            <div class="yaml-header-right">
+                                <div class="yaml-actions">
+                                    <button id="copyYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copiar
+                                    </button>
+                                    <button id="downloadYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-download"></i>
+                                        Baixar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="yaml-container">
+                            <div id="yamlEditor" class="yaml-editor">
+                                <!-- Monaco Editor will be initialized here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Deployment Details Section -->
+                    <div id="deploymentDetailsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="details-header-left">
+                                <button id="backToDeploymentsBtn" class="btn-secondary" title="Voltar aos Deployments">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="deploymentDetailsTitle">Detalhes do Deployment</h3>
+                            </div>
+                            <div class="details-header-right">
+                                <div class="deployment-actions">
+                                    <button id="viewDeploymentLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-journal-text"></i>
+                                        Logs
+                                    </button>
+                                    <button id="viewDeploymentYAMLBtn" class="btn-secondary">
+                                        <i class="bi bi-file-earmark-code"></i>
+                                        YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="deploymentDetailsContainer" class="pod-details-container">
+                            <!-- Deployment details will be populated here by DeploymentDetails component -->
+                        </div>
+                    </div>
+
+                    <!-- Deployment YAML Section -->
+                    <div id="deploymentYAMLSection" class="content-section">
+                        <div class="section-header">
+                            <div class="yaml-header-left">
+                                <button id="backToDeploymentDetailsBtn" class="btn-secondary" title="Voltar aos Detalhes">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="deploymentYAMLTitle">YAML do Deployment</h3>
+                            </div>
+                            <div class="yaml-header-right">
+                                <div class="yaml-actions">
+                                    <button id="copyDeploymentYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copiar
+                                    </button>
+                                    <button id="downloadDeploymentYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-download"></i>
+                                        Baixar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="deploymentYAMLContainer" class="yaml-container">
+                            <div id="deploymentYamlEditor" class="yaml-editor">
+                                <!-- Deployment YAML will be displayed here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Deployment Logs Section (agregado de todos os pods) -->
+                    <div id="deploymentLogsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="logs-header-left">
+                                <button id="backToDeploymentsFromLogsBtn" class="btn-secondary" title="Voltar aos Deployments">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="deploymentLogsTitle">Logs do Deployment</h3>
+                            </div>
+                            <div class="logs-header-right">
+                                <div class="logs-controls">
+                                    <div class="logs-options">
+                                        <button id="deploymentLogsOptionsBtn" class="btn-secondary">
+                                            <i class="bi bi-gear-wide"></i>
+                                            Opções
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="logs-container">
+                            <div class="logs-toolbar">
+                                <div class="logs-search-box">
+                                    <input type="text" id="deploymentLogsSearchInput" placeholder="Buscar nos logs..." />
+                                    <button id="deploymentSearchPrevBtn" title="Anterior">↑</button>
+                                    <button id="deploymentSearchNextBtn" title="Próximo">↓</button>
+                                </div>
+                                <div class="logs-stats">
+                                    <span id="deploymentLogsCount">0 logs</span>
+                                    <span id="deploymentPodsCount">0 pods</span>
+                                </div>
+                            </div>
+                            <div id="deploymentLogsContent" class="logs-content">
+                                <!-- Terminal will be initialized here -->
+                            </div>
+                            <div class="logs-footer">
+                                <div class="logs-actions">
+                                    <button id="pauseDeploymentLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-pause"></i>
+                                        Pausar
+                                    </button>
+                                    <button id="clearDeploymentLogsBtn" class="btn-secondary">
+                                        <i class="bi bi-recycle"></i>
+                                        Limpar
+                                    </button>
+                                    <button id="scrollDeploymentLogsTopBtn" class="btn-secondary">
+                                        <i class="bi bi-arrow-up"></i>
+                                        Topo
+                                    </button>
+                                    <button id="scrollDeploymentLogsBottomBtn" class="btn-secondary">
+                                        <i class="bi bi-arrow-down"></i>
+                                        Final
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Service Details Section -->
+                    <div id="serviceDetailsSection" class="content-section">
+                        <div class="section-header">
+                            <div class="details-header-left">
+                                <button id="backToServicesFromDetailsBtn" class="btn-secondary" title="Voltar aos Services">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="serviceDetailsTitle">Detalhes do Service</h3>
+                            </div>
+                            <div class="details-header-right">
+                                <div class="service-actions">
+                                    <button id="viewServiceYAMLBtn" class="btn-secondary">
+                                        <i class="bi bi-file-code"></i>
+                                        YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="service-details-container">
+                            <div class="service-details-content">
+                                <!-- Service Overview -->
+                                <div class="details-section">
+                                    <h4>Informações Básicas</h4>
+                                    <div class="details-grid">
+                                        <div class="detail-item">
+                                            <label>Nome:</label>
+                                            <span id="serviceDetailName">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Namespace:</label>
+                                            <span id="serviceDetailNamespace">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Idade:</label>
+                                            <span id="serviceDetailAge">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>UID:</label>
+                                            <span id="serviceDetailUID">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Resource Version:</label>
+                                            <span id="serviceDetailResourceVersion">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Service Spec -->
+                                <div class="details-section">
+                                    <h4>Especificação</h4>
+                                    <div class="details-grid">
+                                        <div class="detail-item">
+                                            <label>Tipo:</label>
+                                            <span id="serviceDetailType">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Cluster IP:</label>
+                                            <span id="serviceDetailClusterIP">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>External IPs:</label>
+                                            <span id="serviceDetailExternalIP">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Session Affinity:</label>
+                                            <span id="serviceDetailSessionAffinity">-</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <label>Load Balancer IP:</label>
+                                            <span id="serviceDetailLoadBalancerIP">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Service Status -->
+                                <div class="details-section">
+                                    <h4>Status</h4>
+                                    <div class="details-grid">
+                                        <div class="detail-item">
+                                            <label>Load Balancer Ingress:</label>
+                                            <span id="serviceDetailLoadBalancerIngress">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Endpoints -->
+                                <div class="details-section">
+                                    <h4>Endpoints</h4>
+                                    <div id="serviceEndpointsList" class="endpoints-list">
+                                        <!-- Endpoints will be populated here -->
+                                    </div>
+                                </div>
+
+                                <!-- Labels and Annotations Side by Side -->
+                                <div class="details-section-group">
+                                    <div class="details-section">
+                                        <h4>Labels</h4>
+                                        <div id="serviceLabelsList" class="labels-list">
+                                            <!-- Labels will be populated here -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="details-section">
+                                        <h4>Annotations</h4>
+                                        <div id="serviceAnnotationsList" class="annotations-list">
+                                            <!-- Annotations will be populated here -->
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Selector -->
+                                <div class="details-section">
+                                    <h4>Selector</h4>
+                                    <div id="serviceSelectorList" class="selector-list">
+                                        <!-- Selector will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Service YAML Section -->
+                    <div id="serviceYamlSection" class="content-section">
+                        <div class="section-header">
+                            <div class="yaml-header-left">
+                                <button id="backToServicesFromYamlBtn" class="btn-secondary" title="Voltar aos Services">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="serviceYamlTitle">YAML do Service</h3>
+                            </div>
+                            <div class="yaml-header-right">
+                                <div class="yaml-actions">
+                                    <button id="copyServiceYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copiar
+                                    </button>
+                                    <button id="downloadServiceYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-download"></i>
+                                        Baixar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="yaml-container">
+                            <div id="serviceYamlContent" class="yaml-editor">
+                                <!-- Service YAML will be displayed here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para escalar deployment -->
+    <div id="scaleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Escalar Deployment</h3>
+                <button class="modal-close" id="scaleModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Deployment:</strong> <span id="scaleDeploymentName"></span></p>
+                <p><strong>Namespace:</strong> <span id="scaleDeploymentNamespace"></span></p>
+                <p><strong>Réplicas atuais:</strong> <span id="scaleCurrentReplicas"></span></p>
+                
+                <div class="form-group">
+                    <label for="scaleNewReplicas">Novo número de réplicas:</label>
+                    <input type="number" id="scaleNewReplicas" min="0" class="form-input" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="scaleCancelBtn" class="btn-secondary">Cancelar</button>
+                <button id="scaleConfirmBtn" class="btn-primary">Escalar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para seleção de colunas dos Pods -->
+    <div id="podsColumnSelectorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Selecionar Colunas - Pods</h3>
+                <button class="modal-close" id="podsColumnSelectorClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="column-selector">
+                    <div class="column-selector-actions">
+                        <button id="podsSelectAllColumns" class="btn-secondary">Selecionar Todas</button>
+                        <button id="podsDeselectAllColumns" class="btn-secondary">Desmarcar Todas</button>
+                    </div>
+                    <div id="podsColumnCheckboxes" class="column-checkboxes">
+                        <!-- Checkboxes serão adicionados dinamicamente -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="podsColumnSelectorCancel" class="btn-secondary">Cancelar</button>
+                <button id="podsColumnSelectorSave" class="btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para seleção de colunas dos Deployments -->
+    <div id="deploymentsColumnSelectorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Selecionar Colunas - Deployments</h3>
+                <button class="modal-close" id="deploymentsColumnSelectorClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="column-selector">
+                    <div class="column-selector-actions">
+                        <button id="deploymentsSelectAllColumns" class="btn-secondary">Selecionar Todas</button>
+                        <button id="deploymentsDeselectAllColumns" class="btn-secondary">Desmarcar Todas</button>
+                    </div>
+                    <div id="deploymentsColumnCheckboxes" class="column-checkboxes">
+                        <!-- Checkboxes serão adicionados dinamicamente -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="deploymentsColumnSelectorCancel" class="btn-secondary">Cancelar</button>
+                <button id="deploymentsColumnSelectorSave" class="btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Component Scripts -->
-    <script src="../../build/renderer/bundle.js"></script>
+    <script src="components/Deployments/DeploymentsTable.js"></script>
+    <script src="components/Deployments/DeploymentDetails.js"></script>
+    <script src="components/Deployments/DeploymentYAMLViewer.js"></script>
+    <script src="renderer.js"></script>
 </body>
+
 </html>

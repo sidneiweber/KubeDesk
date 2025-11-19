@@ -1,5 +1,4 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
 class DeploymentsTable {
     constructor(containerSelector) {
         this.deployments = [];
@@ -138,5 +137,6 @@ class DeploymentsTable {
         this.render();
     }
 }
-exports.default = DeploymentsTable;
+// Tornar a classe disponível globalmente
+window.DeploymentsTable = DeploymentsTable;
 //# sourceMappingURL=DeploymentsTable.js.map

@@ -1,5 +1,4 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
 class DeploymentDetails {
     constructor(containerSelector) {
         this.deployment = null;
@@ -43,5 +42,6 @@ class DeploymentDetails {
         this.deployment = null;
     }
 }
-exports.default = DeploymentDetails;
+// Tornar a classe disponível globalmente
+window.DeploymentDetails = DeploymentDetails;
 //# sourceMappingURL=DeploymentDetails.js.map
