@@ -2,6 +2,16 @@
 
 Uma ferramenta moderna e intuitiva para gerenciar clusters Kubernetes, inspirada no Aptakube, desenvolvida com Electron.
 
+## 📸 Capturas de Tela
+
+Aqui estão algumas capturas de tela da aplicação:
+
+![Interface Principal](screenshots/image1.png)
+
+![Visualização de Recursos](screenshots/image2.png)
+
+![Detalhes dos Recursos](screenshots/image3.png)
+
 ## 🚀 Funcionalidades
 
 - **Multi-Cluster**: Conecte-se a múltiplos clusters Kubernetes
