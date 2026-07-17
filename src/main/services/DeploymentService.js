@@ -1,4 +1,5 @@
 const k8s = require('@kubernetes/client-node');
+const { formatAge } = require('../../shared/formatAge');
 
 /**
  * Serviço para gerenciar operações com Deployments no Kubernetes
@@ -31,7 +32,7 @@ class DeploymentService {
                 ready: `${deployment.status.readyReplicas || 0}/${deployment.spec.replicas || 0}`,
                 upToDate: deployment.status.updatedReplicas || 0,
                 available: deployment.status.availableReplicas || 0,
-                age: this.calculateAge(deployment.metadata.creationTimestamp),
+                age: formatAge(deployment.metadata.creationTimestamp),
                 replicas: deployment.spec.replicas || 0,
                 readyReplicas: deployment.status.readyReplicas || 0,
                 conditions: deployment.status.conditions || [],
@@ -206,7 +207,7 @@ class DeploymentService {
                 status: pod.status.phase,
                 ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
                 restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
-                age: this.calculateAge(pod.metadata.creationTimestamp),
+                age: formatAge(pod.metadata.creationTimestamp),
                 node: pod.spec.nodeName,
                 ip: pod.status.podIP,
                 containers: pod.spec.containers.map(container => ({
@@ -322,21 +323,6 @@ class DeploymentService {
      * @param {string} timestamp - Timestamp de criação
      * @returns {string} Idade formatada
      */
-    static calculateAge(timestamp) {
-        const now = new Date();
-        const created = new Date(timestamp);
-        const diff = now - created;
-
-        const seconds = Math.floor(diff / 1000);
-        const minutes = Math.floor(seconds / 60);
-        const hours = Math.floor(minutes / 60);
-        const days = Math.floor(hours / 24);
-
-        if (days > 0) return `${days}d`;
-        if (hours > 0) return `${hours}h`;
-        if (minutes > 0) return `${minutes}m`;
-        return `${seconds}s`;
-    }
 }
 
 module.exports = DeploymentService;

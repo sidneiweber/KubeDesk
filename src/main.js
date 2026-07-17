@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const k8s = require('@kubernetes/client-node');
 const yaml = require('js-yaml');
+const { formatAge } = require('./shared/formatAge');
 const LogService = require('./main/services/LogService');
 const DeploymentService = require('./main/services/DeploymentService');
 
@@ -212,7 +213,7 @@ handleWithCluster('get-pods', 'buscar pods', async (kc, namespace = 'default') =
     status: pod.status.phase,
     ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
     restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
-    age: calculateAge(pod.metadata.creationTimestamp),
+    age: formatAge(pod.metadata.creationTimestamp),
     node: pod.spec.nodeName,
     ip: pod.status.podIP,
     containers: pod.spec.containers.map(container => ({
@@ -255,7 +256,7 @@ handleWithCluster('get-namespaces', 'buscar namespaces', async (kc) => {
   return response.body.items.map(ns => ({
     name: ns.metadata.name,
     status: ns.status.phase,
-    age: calculateAge(ns.metadata.creationTimestamp)
+    age: formatAge(ns.metadata.creationTimestamp)
   }));
 });
 
@@ -286,10 +287,6 @@ handleWithCluster('get-pod-details', 'buscar detalhes do pod', async (kc, podNam
   const response = await k8sApi.readNamespacedPod(podName, namespace);
 
   return response.body;
-});
-
-ipcMain.handle('calculate-age', async (event, creationTimestamp) => {
-  return calculateAge(creationTimestamp);
 });
 
 // Handler para verificar se o Metrics Server está disponível
@@ -660,18 +657,3 @@ handleWithCluster('restart-deployment', 'reiniciar deployment',
 // END DEPLOYMENT HANDLERS
 // ============================================================================
 
-function calculateAge(creationTimestamp) {
-  if (!creationTimestamp) return 'Unknown';
-
-  const now = new Date();
-  const created = new Date(creationTimestamp);
-  const diffMs = now - created;
-
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}

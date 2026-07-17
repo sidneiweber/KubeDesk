@@ -2,6 +2,11 @@
 const nodeRequire = window.nodeRequire || window.require || require;
 const { ipcRenderer } = nodeRequire('electron');
 const LogViewer = nodeRequire('./components/LogViewer');
+const { formatAge } = nodeRequire('../shared/formatAge');
+
+// Exposto para os componentes carregados via <script>, que não têm um require
+// com caminho relativo confiável a partir de components/.
+window.formatAge = formatAge;
 
 // Estado da aplicação
 let currentConnectionId = null;
@@ -1089,7 +1094,7 @@ async function loadServices() {
             row.dataset.serviceNamespace = service.metadata.namespace;
 
             // Calcular idade
-            const age = calculateAge(service.metadata.creationTimestamp);
+            const age = formatAge(service.metadata.creationTimestamp);
             
             // Formatar portas
             const ports = service.spec.ports ? service.spec.ports.map(port => 
@@ -1147,22 +1152,6 @@ async function loadServices() {
     }
 }
 
-function calculateAge(creationTimestamp) {
-    if (!creationTimestamp) return '-';
-    
-    const now = new Date();
-    const created = new Date(creationTimestamp);
-    const diffMs = now - created;
-    
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
-    
-    if (diffDays > 0) return `${diffDays}d`;
-    if (diffHours > 0) return `${diffHours}h`;
-    if (diffMinutes > 0) return `${diffMinutes}m`;
-    return '<1m';
-}
 
 // Abre um menu de contexto na posição do clique. Cada item é
 // { icon, label, action }; action roda ao clicar, com o menu já fechado.
@@ -3767,7 +3756,7 @@ async function showPodYaml(podName, podNamespace) {
             switchSection('podYaml');
             
             // Inicializar Monaco Editor
-            initializeYamlEditor(yamlContent);
+            renderYamlEditor('yamlEditor', yamlContent);
         } else {
             showError('YAML do pod não encontrado');
         }
@@ -3777,28 +3766,6 @@ async function showPodYaml(podName, podNamespace) {
         showError('Erro ao carregar YAML do pod: ' + error.message);
     } finally {
         showLoading(false);
-    }
-}
-
-// Função para inicializar o editor YAML com Prism.js
-function initializeYamlEditor(yamlContent) {
-    // Limpar container
-    elements.yamlEditor.innerHTML = '';
-
-    try {
-        const pre = document.createElement('pre');
-        pre.className = 'line-numbers';
-        const code = document.createElement('code');
-        code.className = 'language-yaml';
-        code.textContent = yamlContent;
-        pre.appendChild(code);
-        elements.yamlEditor.appendChild(pre);
-        if (typeof Prism !== 'undefined') {
-            Prism.highlightElement(code);
-        }
-    } catch (error) {
-        console.error('Erro ao criar editor YAML:', error);
-        elements.yamlEditor.innerHTML = '<div style="padding: 20px; color: #f14c4c;">Erro ao criar editor: ' + error.message + '</div>';
     }
 }
 
