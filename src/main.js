@@ -1,10 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const k8s = require('@kubernetes/client-node');
 const yaml = require('js-yaml');
-const stream = require('stream');
 const LogService = require('./main/services/LogService');
 const DeploymentService = require('./main/services/DeploymentService');
 
@@ -958,98 +957,6 @@ ipcMain.handle('restart-deployment', async (event, connectionId, name, namespace
 // ============================================================================
 // END DEPLOYMENT HANDLERS
 // ============================================================================
-
-// Handler para mostrar menu de contexto de pods
-ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
-  const template = [
-    {
-      label: `Pod: ${podName}`,
-      enabled: false
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: '📋 Ver Logs',
-      click: () => {
-        event.sender.send('context-menu-action', 'show-logs', { podName, podNamespace });
-      }
-    },
-    {
-      label: '📊 Detalhes',
-      click: () => {
-        event.sender.send('context-menu-action', 'show-details', { podName, podNamespace });
-      }
-    },
-    {
-      label: '📄 YAML',
-      click: () => {
-        event.sender.send('context-menu-action', 'show-yaml', { podName, podNamespace });
-      }
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: '🔄 Reiniciar',
-      click: () => {
-        event.sender.send('context-menu-action', 'reload-pod', { podName, podNamespace });
-      }
-    }
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  menu.popup();
-});
-
-// Handler para mostrar menu de contexto de deployments
-ipcMain.handle('show-deployment-context-menu', async (event, deploymentName, deploymentNamespace) => {
-  const template = [
-    {
-      label: `Deployment: ${deploymentName}`,
-      enabled: false
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: '📋 Ver Logs',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'show-logs', { deploymentName, deploymentNamespace });
-      }
-    },
-    {
-      label: '📊 Detalhes',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'show-details', { deploymentName, deploymentNamespace });
-      }
-    },
-    {
-      label: '📄 YAML',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'show-yaml', { deploymentName, deploymentNamespace });
-      }
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: '🔄 Reiniciar',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'restart-deployment', { deploymentName, deploymentNamespace });
-      }
-    },
-    {
-      label: '📏 Escalar',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'scale-deployment', { deploymentName, deploymentNamespace });
-      }
-    }
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  menu.popup();
-});
 
 function calculateAge(creationTimestamp) {
   if (!creationTimestamp) return 'Unknown';

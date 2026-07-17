@@ -534,16 +534,6 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Listener para ações do menu de contexto de pods
-ipcRenderer.on('context-menu-action', (event, action, data) => {
-    handleContextMenuAction(action, data);
-});
-
-// Listener para ações do menu de contexto de deployments
-ipcRenderer.on('deployment-context-menu-action', (event, action, data) => {
-    handleDeploymentContextMenuAction(action, data);
-});
-
 // Listeners para streaming de logs
 ipcRenderer.on('log-stream-data', (event, { streamId, podName, log }) => {
     // Para deployments, aceitar qualquer streamId se estivermos em modo deployment
@@ -3161,49 +3151,6 @@ function showPodContextMenu(event, podName, podNamespace) {
     setTimeout(() => {
         document.addEventListener('click', removeMenu);
     }, 100);
-}
-
-// Função para lidar com ações do menu de contexto
-function handleContextMenuAction(action, data) {
-    switch (action) {
-        case 'show-logs':
-            showPodLogs(data.podName, data.podNamespace);
-            break;
-        case 'show-details':
-            showPodDetails(data.podName, data.podNamespace);
-            break;
-        case 'show-yaml':
-            showPodYaml(data.podName, data.podNamespace);
-            break;
-        case 'reload-pod':
-            reloadPod(data.podName, data.podNamespace);
-            break;
-        default:
-            console.log('Ação não reconhecida:', action);
-    }
-}
-
-// Função para lidar com ações do menu de contexto de deployments
-function handleDeploymentContextMenuAction(action, data) {
-    switch (action) {
-        case 'show-logs':
-            showDeploymentLogs(data.deploymentName, data.deploymentNamespace);
-            break;
-        case 'show-details':
-            showDeploymentDetails(data.deploymentName, data.deploymentNamespace);
-            break;
-        case 'show-yaml':
-            showDeploymentYAML(data.deploymentName, data.deploymentNamespace);
-            break;
-        case 'restart-deployment':
-            restartDeployment(data.deploymentName, data.deploymentNamespace);
-            break;
-        case 'scale-deployment':
-            scaleDeployment(data.deploymentName, data.deploymentNamespace);
-            break;
-        default:
-            console.log('Ação não reconhecida:', action);
-    }
 }
 
 // Função para mostrar menu de contexto de deployment
