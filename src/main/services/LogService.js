@@ -1,68 +1,7 @@
 const k8s = require('@kubernetes/client-node');
 const stream = require('stream');
-const { parseLogs } = require('../utils/LogParser');
 
 const activeLogStreams = new Map();
-
-async function getPodLogs(kc, podName, namespace, containerName = null, tailLines = 100, sinceSeconds = 300) {
-    try {
-        if (!kc) {
-            throw new Error('Configuração Kubernetes não fornecida');
-        }
-
-        const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-
-        // Tentar diferentes configurações até encontrar uma que funcione
-        const configs = [
-            // Configuração 1: Com timestamps e sinceSeconds (prioridade alta)
-            {
-                name: 'com timestamps e sinceSeconds',
-                params: [podName, namespace, containerName, undefined, undefined, sinceSeconds, undefined, true, tailLines]
-            },
-            // Configuração 2: Com timestamps apenas
-            {
-                name: 'com timestamps',
-                params: [podName, namespace, containerName, undefined, undefined, undefined, undefined, true, tailLines]
-            },
-            // Configuração 3: Com tailLines
-            {
-                name: 'com tailLines',
-                params: [podName, namespace, containerName, undefined, undefined, undefined, undefined, undefined, tailLines]
-            },
-            // Configuração 4: Básica - apenas parâmetros essenciais
-            {
-                name: 'básica',
-                params: [podName, namespace, containerName]
-            }
-        ];
-
-        let response = null;
-        let lastError = null;
-
-        for (const config of configs) {
-            try {
-                response = await k8sApi.readNamespacedPodLog(...config.params);
-                break;
-            } catch (error) {
-                console.warn(`Falha com configuração ${config.name}: ${error.message}`);
-                lastError = error;
-                continue;
-            }
-        }
-
-        if (!response) {
-            throw lastError || new Error('Todas as configurações falharam');
-        }
-
-        return parseLogs(response.body, podName);
-    } catch (error) {
-        console.error('Erro detalhado ao buscar logs:', {
-            podName, namespace, containerName, tailLines, sinceSeconds,
-            error: error.message, status: error.status, response: error.response?.body
-        });
-        throw new Error(`Erro ao buscar logs do pod: ${error.message}`);
-    }
-}
 
 async function streamPodLogs(kc, connectionId, podName, namespace, containerName, sinceSeconds, event) {
     if (!kc) {
@@ -115,4 +54,4 @@ function stopLogStream(streamId) {
     }
 }
 
-module.exports = { getPodLogs, streamPodLogs, stopLogStream, activeLogStreams };
+module.exports = { streamPodLogs, stopLogStream, activeLogStreams };

@@ -362,8 +362,11 @@ elements.backToPodsBtn.addEventListener('click', () => {
 
 elements.containerSelect.addEventListener('change', async () => {
     if (currentPodName && currentPodNamespace) {
-        // Recarregar logs com o container selecionado
-        await loadInitialLogs();
+        // streamLogs() lê o container do select apenas ao abrir o stream, então
+        // trocar de container exige derrubar o stream atual e abrir outro.
+        stopLogsStreaming();
+        clearLogs();
+        await startLogsStreaming();
     }
 });
 
@@ -2607,11 +2610,6 @@ async function startLogsStreaming() {
         console.error('Erro ao iniciar streaming de logs:', error);
         showError('Erro ao carregar logs: ' + error.message);
     }
-}
-
-async function loadInitialLogs() {
-    // Função mantida para compatibilidade, mas não carrega mais logs históricos
-    // Agora usamos apenas streaming em tempo real
 }
 
 async function streamLogs() {

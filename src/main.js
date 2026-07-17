@@ -117,6 +117,65 @@ ipcMain.handle('select-kubeconfig-file', async () => {
 // Armazenar configurações ativas em memória
 const activeConfigs = new Map();
 
+function getCluster(connectionId) {
+  const kc = activeConfigs.get(connectionId);
+  if (!kc) {
+    throw new Error('Conexão não encontrada');
+  }
+  return kc;
+}
+
+// Registra um handler IPC que opera sobre uma conexão ativa. Resolve o
+// connectionId antes de chamar fn e prefixa qualquer erro com a descrição da
+// operação, para o renderer exibir uma mensagem com contexto.
+function handleWithCluster(channel, description, fn) {
+  ipcMain.handle(channel, async (event, connectionId, ...args) => {
+    try {
+      return await fn(getCluster(connectionId), ...args);
+    } catch (error) {
+      throw new Error(`Erro ao ${description}: ${error.message}`);
+    }
+  });
+}
+
+// Serializa um objeto do K8s em YAML, sem managedFields (ruído de API).
+function toCleanYaml(body) {
+  const data = JSON.parse(JSON.stringify(body));
+  delete data.metadata?.managedFields;
+
+  return yaml.dump(data, {
+    indent: 2,
+    lineWidth: -1,
+    noRefs: true,
+    sortKeys: false
+  });
+}
+
+// Projeção de um Service para o formato consumido pelo renderer.
+function projectService(service) {
+  return {
+    metadata: {
+      name: service.metadata.name,
+      namespace: service.metadata.namespace,
+      creationTimestamp: service.metadata.creationTimestamp,
+      uid: service.metadata.uid,
+      resourceVersion: service.metadata.resourceVersion,
+      labels: service.metadata.labels || {},
+      annotations: service.metadata.annotations || {}
+    },
+    spec: {
+      type: service.spec.type,
+      clusterIP: service.spec.clusterIP,
+      externalIPs: service.spec.externalIPs || [],
+      sessionAffinity: service.spec.sessionAffinity,
+      loadBalancerIP: service.spec.loadBalancerIP,
+      ports: service.spec.ports || [],
+      selector: service.spec.selector || {}
+    },
+    status: service.status || {}
+  };
+}
+
 ipcMain.handle('connect-to-cluster', async (event, configPath, contextName) => {
   try {
     const kc = new k8s.KubeConfig();
@@ -141,192 +200,69 @@ ipcMain.handle('connect-to-cluster', async (event, configPath, contextName) => {
   }
 });
 
-ipcMain.handle('get-pods', async (event, connectionId, namespace = 'default') => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-pods', 'buscar pods', async (kc, namespace = 'default') => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = namespace === 'all'
+    ? await k8sApi.listPodForAllNamespaces()
+    : await k8sApi.listNamespacedPod(namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    let response;
-
-    if (namespace === 'all') {
-      // Listar pods de todos os namespaces
-      response = await k8sApi.listPodForAllNamespaces();
-    } else {
-      // Listar pods de um namespace específico
-      response = await k8sApi.listNamespacedPod(namespace);
-    }
-
-    const pods = response.body.items.map(pod => ({
-      name: pod.metadata.name,
-      namespace: pod.metadata.namespace,
-      status: pod.status.phase,
-      ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
-      restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
-      age: calculateAge(pod.metadata.creationTimestamp),
-      node: pod.spec.nodeName,
-      ip: pod.status.podIP,
-      containers: pod.spec.containers.map(container => ({
-        name: container.name,
-        image: container.image,
-        resources: container.resources
-      })),
-      // Adicionar recursos agregados do pod
-      totalResources: calculatePodTotalResources(pod.spec.containers)
-    }));
-
-    return pods;
-  } catch (error) {
-    throw new Error(`Erro ao buscar pods: ${error.message}`);
-  }
+  return response.body.items.map(pod => ({
+    name: pod.metadata.name,
+    namespace: pod.metadata.namespace,
+    status: pod.status.phase,
+    ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
+    restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
+    age: calculateAge(pod.metadata.creationTimestamp),
+    node: pod.spec.nodeName,
+    ip: pod.status.podIP,
+    containers: pod.spec.containers.map(container => ({
+      name: container.name,
+      image: container.image,
+      resources: container.resources
+    })),
+    // Adicionar recursos agregados do pod
+    totalResources: calculatePodTotalResources(pod.spec.containers)
+  }));
 });
 
-ipcMain.handle('get-services', async (event, connectionId, namespace = 'default') => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-services', 'buscar services', async (kc, namespace = 'default') => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = namespace === 'all'
+    ? await k8sApi.listServiceForAllNamespaces()
+    : await k8sApi.listNamespacedService(namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    let response;
-
-    if (namespace === 'all') {
-      // Listar services de todos os namespaces
-      response = await k8sApi.listServiceForAllNamespaces();
-    } else {
-      // Listar services de um namespace específico
-      response = await k8sApi.listNamespacedService(namespace);
-    }
-
-    const services = response.body.items.map(service => ({
-      metadata: {
-        name: service.metadata.name,
-        namespace: service.metadata.namespace,
-        creationTimestamp: service.metadata.creationTimestamp,
-        uid: service.metadata.uid,
-        resourceVersion: service.metadata.resourceVersion,
-        labels: service.metadata.labels || {},
-        annotations: service.metadata.annotations || {}
-      },
-      spec: {
-        type: service.spec.type,
-        clusterIP: service.spec.clusterIP,
-        externalIPs: service.spec.externalIPs || [],
-        sessionAffinity: service.spec.sessionAffinity,
-        loadBalancerIP: service.spec.loadBalancerIP,
-        ports: service.spec.ports || [],
-        selector: service.spec.selector || {}
-      },
-      status: service.status || {}
-    }));
-
-    return services;
-  } catch (error) {
-    throw new Error(`Erro ao buscar services: ${error.message}`);
-  }
+  return response.body.items.map(projectService);
 });
 
-ipcMain.handle('get-service', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-service', 'buscar service', async (kc, name, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedService(name, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedService(name, namespace);
-    
-    return {
-      metadata: {
-        name: response.body.metadata.name,
-        namespace: response.body.metadata.namespace,
-        creationTimestamp: response.body.metadata.creationTimestamp,
-        uid: response.body.metadata.uid,
-        resourceVersion: response.body.metadata.resourceVersion,
-        labels: response.body.metadata.labels || {},
-        annotations: response.body.metadata.annotations || {}
-      },
-      spec: {
-        type: response.body.spec.type,
-        clusterIP: response.body.spec.clusterIP,
-        externalIPs: response.body.spec.externalIPs || [],
-        sessionAffinity: response.body.spec.sessionAffinity,
-        loadBalancerIP: response.body.spec.loadBalancerIP,
-        ports: response.body.spec.ports || [],
-        selector: response.body.spec.selector || {}
-      },
-      status: response.body.status || {}
-    };
-  } catch (error) {
-    throw new Error(`Erro ao buscar service: ${error.message}`);
-  }
+  return projectService(response.body);
 });
 
-ipcMain.handle('get-service-yaml', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-service-yaml', 'buscar YAML do service', async (kc, name, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedService(name, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedService(name, namespace);
-    
-    // Remover managedFields do metadata para uma visualização mais limpa
-    const serviceData = JSON.parse(JSON.stringify(response.body));
-    if (serviceData.metadata && serviceData.metadata.managedFields) {
-      delete serviceData.metadata.managedFields;
-    }
-
-    // Converter para YAML usando a biblioteca js-yaml
-    try {
-      const yaml = require('js-yaml');
-      return yaml.dump(serviceData, {
-        indent: 2,
-        lineWidth: -1,
-        noRefs: true,
-        sortKeys: false
-      });
-    } catch (e) {
-      // Fallback para JSON formatado
-      return JSON.stringify(serviceData, null, 2);
-    }
-  } catch (error) {
-    throw new Error(`Erro ao buscar YAML do service: ${error.message}`);
-  }
+  return toCleanYaml(response.body);
 });
 
-ipcMain.handle('get-namespaces', async (event, connectionId) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-namespaces', 'buscar namespaces', async (kc) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.listNamespace();
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.listNamespace();
-    const namespaces = response.body.items.map(ns => ({
-      name: ns.metadata.name,
-      status: ns.status.phase,
-      age: calculateAge(ns.metadata.creationTimestamp)
-    }));
-
-    return namespaces;
-  } catch (error) {
-    throw new Error(`Erro ao buscar namespaces: ${error.message}`);
-  }
+  return response.body.items.map(ns => ({
+    name: ns.metadata.name,
+    status: ns.status.phase,
+    age: calculateAge(ns.metadata.creationTimestamp)
+  }));
 });
 
-ipcMain.handle('get-pod-logs', (event, connectionId, podName, namespace, containerName = null, tailLines = 100, sinceSeconds = 300) => {
-  const kc = activeConfigs.get(connectionId);
-  return LogService.getPodLogs(kc, podName, namespace, containerName, tailLines, sinceSeconds);
-});
-
+// Fora do handleWithCluster: além do kc, precisa do connectionId e do event
+// para emitir os chunks do stream de volta ao renderer.
 ipcMain.handle('stream-pod-logs', async (event, connectionId, podName, namespace, containerName = null, sinceSeconds = null) => {
-  const kc = activeConfigs.get(connectionId);
+  const kc = getCluster(connectionId);
   return LogService.streamPodLogs(kc, connectionId, podName, namespace, containerName, sinceSeconds, event);
 });
 
@@ -334,42 +270,22 @@ ipcMain.on('stop-stream-pod-logs', (event, streamId) => {
   LogService.stopLogStream(streamId);
 });
 
-ipcMain.handle('get-pod-containers', async (event, connectionId, podName, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-pod-containers', 'buscar containers do pod', async (kc, podName, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedPod(podName, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedPod(podName, namespace);
-
-    const containers = response.body.spec.containers.map(container => ({
-      name: container.name,
-      image: container.image,
-      ready: response.body.status.containerStatuses?.find(cs => cs.name === container.name)?.ready || false
-    }));
-
-    return containers;
-  } catch (error) {
-    throw new Error(`Erro ao buscar containers do pod: ${error.message}`);
-  }
+  return response.body.spec.containers.map(container => ({
+    name: container.name,
+    image: container.image,
+    ready: response.body.status.containerStatuses?.find(cs => cs.name === container.name)?.ready || false
+  }));
 });
 
-ipcMain.handle('get-pod-details', async (event, connectionId, podName, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-pod-details', 'buscar detalhes do pod', async (kc, podName, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedPod(podName, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedPod(podName, namespace);
-
-    return response.body;
-  } catch (error) {
-    throw new Error(`Erro ao buscar detalhes do pod: ${error.message}`);
-  }
+  return response.body;
 });
 
 ipcMain.handle('calculate-age', async (event, creationTimestamp) => {
@@ -379,13 +295,8 @@ ipcMain.handle('calculate-age', async (event, creationTimestamp) => {
 // Handler para verificar se o Metrics Server está disponível
 ipcMain.handle('check-metrics-server', async (event, connectionId) => {
   try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+    const metricsApi = getCluster(connectionId).makeApiClient(k8s.CustomObjectsApi);
 
-    const metricsApi = kc.makeApiClient(k8s.CustomObjectsApi);
-    
     // Tentar listar métricas de pods em um namespace específico
     await metricsApi.listNamespacedCustomObject(
       'metrics.k8s.io',
@@ -406,10 +317,7 @@ ipcMain.handle('check-metrics-server', async (event, connectionId) => {
 
 ipcMain.handle('get-pod-metrics', async (event, connectionId, podName, namespace) => {
   try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+    const kc = getCluster(connectionId);
 
     // Buscar dados reais do pod
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
@@ -432,10 +340,7 @@ ipcMain.handle('get-pod-metrics', async (event, connectionId, podName, namespace
 // Handler para buscar métricas de múltiplos pods em batch
 ipcMain.handle('get-pods-metrics-batch', async (event, connectionId, pods) => {
   try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+    const kc = getCluster(connectionId);
 
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
     const metricsApi = kc.makeApiClient(k8s.CustomObjectsApi);
@@ -722,129 +627,34 @@ function formatMemoryIntelligently(bytes) {
 
 
 // Handler para buscar YAML do pod
-ipcMain.handle('get-pod-yaml', async (event, connectionId, podName, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-pod-yaml', 'buscar YAML do pod', async (kc, podName, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedPod(podName, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedPod(podName, namespace);
-
-    // Remover managedFields do metadata para uma visualização mais limpa
-    const podData = JSON.parse(JSON.stringify(response.body));
-    if (podData.metadata && podData.metadata.managedFields) {
-      delete podData.metadata.managedFields;
-    }
-
-    // Converter o objeto do pod para YAML
-    const podYaml = yaml.dump(podData, {
-      indent: 2,
-      lineWidth: -1,
-      noRefs: true,
-      sortKeys: false
-    });
-
-    return podYaml;
-  } catch (error) {
-    throw new Error(`Erro ao buscar YAML do pod: ${error.message}`);
-  }
+  return toCleanYaml(response.body);
 });
 
 // ============================================================================
 // DEPLOYMENT HANDLERS
 // ============================================================================
 
-// Handler para listar deployments
-ipcMain.handle('get-deployments', async (event, connectionId, namespace = 'default') => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-deployments', 'buscar deployments',
+  (kc, namespace = 'default') => DeploymentService.listDeployments(kc, namespace));
 
-    return await DeploymentService.listDeployments(kc, namespace);
-  } catch (error) {
-    console.error('Erro ao buscar deployments:', error);
-    throw new Error(`Erro ao buscar deployments: ${error.message}`);
-  }
-});
+handleWithCluster('get-deployment-details', 'buscar detalhes do deployment',
+  (kc, name, namespace) => DeploymentService.getDeploymentDetails(kc, name, namespace));
 
-// Handler para obter detalhes de um deployment
-ipcMain.handle('get-deployment-details', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-deployment-yaml', 'buscar YAML do deployment',
+  (kc, name, namespace) => DeploymentService.getDeploymentYAML(kc, name, namespace));
 
-    return await DeploymentService.getDeploymentDetails(kc, name, namespace);
-  } catch (error) {
-    console.error('Erro ao buscar detalhes do deployment:', error);
-    throw new Error(`Erro ao buscar detalhes do deployment: ${error.message}`);
-  }
-});
+handleWithCluster('get-deployment-pods', 'buscar pods do deployment',
+  (kc, deploymentName, namespace) => DeploymentService.getDeploymentPods(kc, deploymentName, namespace));
 
-// Handler para obter YAML de um deployment
-ipcMain.handle('get-deployment-yaml', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('scale-deployment', 'escalar deployment',
+  (kc, name, namespace, replicas) => DeploymentService.scaleDeployment(kc, name, namespace, replicas));
 
-    return await DeploymentService.getDeploymentYAML(kc, name, namespace);
-  } catch (error) {
-    console.error('Erro ao buscar YAML do deployment:', error);
-    throw new Error(`Erro ao buscar YAML do deployment: ${error.message}`);
-  }
-});
-
-// Handler para obter pods de um deployment
-ipcMain.handle('get-deployment-pods', async (event, connectionId, deploymentName, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
-
-    return await DeploymentService.getDeploymentPods(kc, deploymentName, namespace);
-  } catch (error) {
-    console.error('Erro ao buscar pods do deployment:', error);
-    throw new Error(`Erro ao buscar pods do deployment: ${error.message}`);
-  }
-});
-
-// Handler para escalar um deployment
-ipcMain.handle('scale-deployment', async (event, connectionId, name, namespace, replicas) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
-
-    return await DeploymentService.scaleDeployment(kc, name, namespace, replicas);
-  } catch (error) {
-    console.error('Erro ao escalar deployment:', error);
-    throw new Error(`Erro ao escalar deployment: ${error.message}`);
-  }
-});
-
-// Handler para reiniciar um deployment
-ipcMain.handle('restart-deployment', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
-
-    return await DeploymentService.restartDeployment(kc, name, namespace);
-  } catch (error) {
-    console.error('Erro ao reiniciar deployment:', error);
-    throw new Error(`Erro ao reiniciar deployment: ${error.message}`);
-  }
-});
+handleWithCluster('restart-deployment', 'reiniciar deployment',
+  (kc, name, namespace) => DeploymentService.restartDeployment(kc, name, namespace));
 
 // ============================================================================
 // END DEPLOYMENT HANDLERS
