@@ -85,6 +85,10 @@ let currentDeploymentPods = [];
 let logsStreaming = false;
 let logsPaused = false;
 let logsData = [];
+// Instantes de chegada dos logs, para calcular a taxa real em RATE_WINDOW_MS
+let logArrivalTimestamps = [];
+let logsRateInterval = null;
+const RATE_WINDOW_MS = 5000;
 let logsFilter = '';
 let currentLogStreamId = null;
 let logViewer = null;
@@ -2357,6 +2361,30 @@ function removeTooltip() {
 
 // Função para renderizar barra de progresso de recursos
 function renderResourceProgressBar(current, requests, percentage, type, limits = null) {
+    // Uso atual só existe com Metrics Server. Sem ele, mostrar N/D em vez de
+    // uma barra — um valor estimado seria indistinguível de medição real.
+    if (current === null) {
+        const referenceValue = limits || requests;
+        const tooltipContent = referenceValue
+            ? `Uso atual indisponível (Metrics Server) — limite definido: ${referenceValue}`
+            : 'Uso atual indisponível (Metrics Server)';
+
+        return `
+            <div class="resource-usage-cell">
+                <div class="resource-value resource-value-unavailable" title="${tooltipContent}">N/D</div>
+            </div>
+        `;
+    }
+
+    // Uso medido, mas sem requests/limits não há denominador para uma barra.
+    if (percentage === null) {
+        return `
+            <div class="resource-usage-cell">
+                <div class="resource-value" title="Sem requests/limits definidos">${current}</div>
+            </div>
+        `;
+    }
+
     const safePercentage = Math.min(100, Math.max(0, percentage));
     
     // Definir cores baseadas na porcentagem e tipo
@@ -2554,6 +2582,10 @@ async function startLogsStreaming() {
         logsStreaming = true;
         logsPaused = false;
 
+        // Sem isto a taxa congelaria no último valor quando os logs parassem
+        if (logsRateInterval) clearInterval(logsRateInterval);
+        logsRateInterval = setInterval(updateLogsStats, 1000);
+
         // Atualizar botão de pausa
         elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
 
@@ -2622,6 +2654,7 @@ async function streamLogs() {
 function addLogEntry(log) {
     // Adicionar log aos dados (para compatibilidade e exportação)
     logsData.push(log);
+    logArrivalTimestamps.push(Date.now());
 
     // Limitar número total de logs em memória
     if (logsData.length > MAX_TOTAL_LOGS) {
@@ -2718,11 +2751,19 @@ function updateLogsStats() {
         totalLogs = stats.total;
     }
 
-    const rate = logsStreaming && !logsPaused ? Math.floor(Math.random() * 10) + 1 : 0;
-
     elements.logsCount.textContent = `${totalLogs} logs`;
-    elements.logsRate.textContent = `${rate}/s`;
+    elements.logsRate.textContent = `${currentLogsRate()}/s`;
+}
 
+// Taxa real de logs: quantos chegaram na última janela, normalizado por segundo.
+function currentLogsRate() {
+    const cutoff = Date.now() - RATE_WINDOW_MS;
+    // Timestamps são monotônicos, então basta descartar o prefixo expirado
+    const firstValid = logArrivalTimestamps.findIndex(ts => ts >= cutoff);
+    logArrivalTimestamps = firstValid === -1 ? [] : logArrivalTimestamps.slice(firstValid);
+
+    const rate = logArrivalTimestamps.length / (RATE_WINDOW_MS / 1000);
+    return rate < 1 && rate > 0 ? rate.toFixed(1) : Math.round(rate);
 }
 
 function filterLogs() {
@@ -2769,8 +2810,15 @@ function stopLogsStreaming() {
         window.logsInterval = null;
     }
 
+    if (logsRateInterval) {
+        clearInterval(logsRateInterval);
+        logsRateInterval = null;
+    }
+    logArrivalTimestamps = [];
+
     logsStreaming = false;
     logsPaused = false;
+    updateLogsStats();
 
     elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
 
@@ -2783,6 +2831,7 @@ function stopLogsStreaming() {
 
 function clearLogs() {
     logsData = [];
+    logArrivalTimestamps = [];
     if (logViewer) {
         logViewer.clear();
     } else {
@@ -3951,110 +4000,49 @@ function downloadYaml() {
     showToast('YAML baixado com sucesso', 'success');
 }
 
-// Função para calcular uso de recursos (baseado em limits com fallback para requests)
-function calculateResourceUsage(requestValue, type, limitValue = null) {
-    let usagePercentage;
-    let currentValue;
-    let requestValueFormatted;
-    let limitValueFormatted;
-    
-    // Usar limits como referência, fallback para requests
-    const referenceValue = limitValue || requestValue;
-    const referenceType = limitValue ? 'limits' : 'requests';
-    
-    if (type === 'cpu') {
-        if (referenceValue) {
-            // Para CPU, simular uso baseado na referência (limits ou requests)
-            usagePercentage = Math.random() * 30 + 10; // 10-40%
-            const referenceMillicores = parseCpuValue(referenceValue);
-            const currentMillicores = Math.floor((referenceMillicores * usagePercentage) / 100);
-            currentValue = `${currentMillicores}m`;
-            requestValueFormatted = requestValue || '-';
-            limitValueFormatted = limitValue || '-';
-        } else {
-            // Sem requests nem limits - simular uso absoluto baixo
-            const simulatedMillicores = Math.floor(Math.random() * 50) + 10; // 10-60m
-            currentValue = `${simulatedMillicores}m`;
-            usagePercentage = Math.min(100, (simulatedMillicores / 100) * 100); // Baseado em 100m como referência
-            requestValueFormatted = '-';
-            limitValueFormatted = '-';
-        }
-    } else if (type === 'memory') {
-        if (referenceValue) {
-            // Para memória, simular uso baseado na referência (limits ou requests)
-            usagePercentage = Math.random() * 40 + 15; // 15-55%
-            const referenceBytes = parseMemoryValue(referenceValue);
-            const currentBytes = Math.floor((referenceBytes * usagePercentage) / 100);
-            currentValue = formatMemoryValue(currentBytes);
-            requestValueFormatted = requestValue || '-';
-            limitValueFormatted = limitValue || '-';
-        } else {
-            // Sem requests nem limits - simular uso absoluto baixo
-            const simulatedBytes = Math.floor(Math.random() * 500 * 1024 * 1024) + 100 * 1024 * 1024; // 100-600Mi
-            currentValue = formatMemoryValue(simulatedBytes);
-            usagePercentage = Math.min(100, (simulatedBytes / (1024 * 1024 * 1024)) * 100); // Baseado em 1Gi como referência
-            requestValueFormatted = '-';
-            limitValueFormatted = '-';
-        }
-    }
-    
+// Renderiza um bloco de recurso (CPU/memória) de um container nos detalhes do pod.
+function renderContainerResource(label, usage) {
+    const showBar = usage.percentage !== null && (usage.hasRequests || usage.hasLimits);
+
+    const allocation = `
+        <div class="resource-allocation">
+            <span>Allocation</span>
+            <span>Requests: ${usage.request}</span>
+            ${usage.hasLimits ? `<span>Limits: ${usage.limit}</span>` : ''}
+        </div>
+    `;
+
+    return `
+        <div class="resource-usage">
+            <div class="resource-header">
+                <span class="resource-label">${label}</span>
+                <span class="resource-value${usage.current === null ? ' resource-value-unavailable' : ''}"
+                      ${usage.current === null ? 'title="Uso atual indisponível (Metrics Server)"' : ''}>${usage.current ?? 'N/D'}</span>
+            </div>
+            ${showBar ? `
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: ${usage.percentage}%"></div>
+            </div>
+            ` : ''}
+            ${allocation}
+        </div>
+    `;
+}
+
+// Monta o descritor de uso de um container. current/percentage nulos significam
+// que o Metrics Server não respondeu — nesse caso a UI mostra N/D e omite a
+// barra, em vez de exibir um número que o usuário não conseguiria auditar.
+function buildContainerUsage(metric, requestValue, limitValue) {
     return {
-        current: currentValue,
-        percentage: Math.round(usagePercentage),
-        request: requestValueFormatted,
-        limit: limitValueFormatted,
+        current: metric?.current ?? null,
+        percentage: metric?.percentage ?? null,
+        request: requestValue || '-',
+        limit: limitValue || '-',
         hasRequests: !!requestValue,
-        hasLimits: !!limitValue,
-        referenceType: referenceType
+        hasLimits: !!limitValue
     };
 }
 
-// Função para converter valores de CPU para milicores
-function parseCpuValue(cpuStr) {
-    if (!cpuStr) return 0;
-    
-    if (cpuStr.endsWith('m')) {
-        return parseInt(cpuStr.slice(0, -1));
-    } else if (cpuStr.endsWith('n')) {
-        return Math.floor(parseInt(cpuStr.slice(0, -1)) / 1000000);
-    } else {
-        return Math.floor(parseFloat(cpuStr) * 1000);
-    }
-}
-
-// Função para converter valores de memória para bytes
-function parseMemoryValue(memStr) {
-    if (!memStr) return 0;
-    
-    const units = {
-        'Ki': 1024,
-        'Mi': 1024 * 1024,
-        'Gi': 1024 * 1024 * 1024,
-        'Ti': 1024 * 1024 * 1024 * 1024
-    };
-    
-    for (const [unit, multiplier] of Object.entries(units)) {
-        if (memStr.endsWith(unit)) {
-            return Math.floor(parseFloat(memStr.slice(0, -unit.length)) * multiplier);
-        }
-    }
-    
-    return parseInt(memStr) || 0;
-}
-
-// Função para formatar bytes em unidades legíveis
-function formatMemoryValue(bytes) {
-    const units = ['B', 'Ki', 'Mi', 'Gi', 'Ti'];
-    let size = bytes;
-    let unitIndex = 0;
-    
-    while (size >= 1024 && unitIndex < units.length - 1) {
-        size /= 1024;
-        unitIndex++;
-    }
-    
-    return `${size.toFixed(2)}${units[unitIndex]}`;
-}
 
 // Função auxiliar para converter CPU para millicores (copiada do main.js)
 function parseCpuToMillicores(cpuStr) {
@@ -4131,39 +4119,11 @@ async function renderPodContainers(podDetails) {
             const requests = container.resources?.requests || {};
             const limits = container.resources?.limits || {};
             
-            // Usar métricas reais se disponíveis, senão usar cálculo baseado em requests/limits
-            let cpuUsage, memoryUsage;
-            
-            if (podMetrics && podMetrics.cpu && podMetrics.memory) {
-                // Usar métricas reais do pod
-                // Para simplificar, usar as métricas do pod para todos os containers
-                // (em um cenário real, seria necessário buscar métricas por container individual)
-                
-                cpuUsage = {
-                    current: podMetrics.cpu.current,
-                    percentage: Math.round(podMetrics.cpu.percentage),
-                    request: requests.cpu || '-',
-                    limit: limits.cpu || '-',
-                    hasRequests: !!requests.cpu,
-                    hasLimits: !!limits.cpu,
-                    referenceType: limits.cpu ? 'limits' : 'requests'
-                };
-                
-                memoryUsage = {
-                    current: podMetrics.memory.current,
-                    percentage: Math.round(podMetrics.memory.percentage),
-                    request: requests.memory || '-',
-                    limit: limits.memory || '-',
-                    hasRequests: !!requests.memory,
-                    hasLimits: !!limits.memory,
-                    referenceType: limits.memory ? 'limits' : 'requests'
-                };
-            } else {
-                // Fallback para cálculo baseado em requests/limits
-                cpuUsage = calculateResourceUsage(requests.cpu, 'cpu', limits.cpu);
-                memoryUsage = calculateResourceUsage(requests.memory, 'memory', limits.memory);
-            }
-            
+            // O uso vem do Metrics Server; requests/limits vêm do spec do container.
+            // As métricas são do pod inteiro, então são repetidas para cada container.
+            const cpuUsage = buildContainerUsage(podMetrics?.cpu, requests.cpu, limits.cpu);
+            const memoryUsage = buildContainerUsage(podMetrics?.memory, requests.memory, limits.memory);
+
             containerDiv.innerHTML = `
                 <div class="container-header">
                     <div class="container-name">${container.name}</div>
@@ -4176,51 +4136,11 @@ async function renderPodContainers(podDetails) {
                     </div>
                     
                     <!-- CPU Usage -->
-                    <div class="resource-usage">
-                        <div class="resource-header">
-                            <span class="resource-label">CPU Usage</span>
-                            <span class="resource-value">${cpuUsage.current}</span>
-                        </div>
-                        ${(cpuUsage.hasRequests || cpuUsage.hasLimits) ? `
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${cpuUsage.percentage}%"></div>
-                        </div>
-                        <div class="resource-allocation">
-                            <span>Allocation</span>
-                            <span>Requests: ${cpuUsage.request}</span>
-                            ${cpuUsage.hasLimits ? `<span>Limits: ${cpuUsage.limit}</span>` : ''}
-                        </div>
-                        ` : `
-                        <div class="resource-allocation">
-                            <span>Allocation</span>
-                            <span>Requests: ${cpuUsage.request}</span>
-                        </div>
-                        `}
-                    </div>
-                    
+                    ${renderContainerResource('CPU Usage', cpuUsage)}
+
                     <!-- Memory Usage -->
-                    <div class="resource-usage">
-                        <div class="resource-header">
-                            <span class="resource-label">Memory Usage</span>
-                            <span class="resource-value">${memoryUsage.current}</span>
-                        </div>
-                        ${(memoryUsage.hasRequests || memoryUsage.hasLimits) ? `
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${memoryUsage.percentage}%"></div>
-                        </div>
-                        <div class="resource-allocation">
-                            <span>Allocation</span>
-                            <span>Requests: ${memoryUsage.request}</span>
-                            ${memoryUsage.hasLimits ? `<span>Limits: ${memoryUsage.limit}</span>` : ''}
-                        </div>
-                        ` : `
-                        <div class="resource-allocation">
-                            <span>Allocation</span>
-                            <span>Requests: ${memoryUsage.request}</span>
-                        </div>
-                        `}
-                    </div>
-                    
+                    ${renderContainerResource('Memory Usage', memoryUsage)}
+
                     <div class="container-detail">
                         <label>Restarts:</label>
                         <span>${containerStatus?.restartCount || 0}</span>

@@ -417,22 +417,15 @@ ipcMain.handle('get-pod-metrics', async (event, connectionId, podName, namespace
     const pod = response.body;
 
     // Tentar buscar métricas reais do Metrics Server
-    let realMetrics;
     try {
-      realMetrics = await getRealPodMetrics(kc, podName, namespace, pod);
+      return await getRealPodMetrics(kc, podName, namespace, pod);
     } catch (metricsError) {
-      // Fallback para cálculo baseado apenas nas requests/limits
-      realMetrics = calculateRealPodMetrics(pod);
+      // Sem Metrics Server ainda temos requests/limits do spec, mas não o uso
+      return podResourcesWithoutUsage(pod);
     }
-    
-    return realMetrics;
   } catch (error) {
     console.error('Erro ao buscar métricas do pod:', error);
-    // Fallback final: retornar métricas zeradas se não conseguir buscar dados
-    return {
-      cpu: { current: '0m', requests: null, limits: null, percentage: 0 },
-      memory: { current: '0Mi', requests: null, limits: null, percentage: 0 }
-    };
+    return unknownMetrics();
   }
 });
 
@@ -480,41 +473,19 @@ ipcMain.handle('get-pods-metrics-batch', async (event, connectionId, pods) => {
     const results = await Promise.all(
       podResults.map(async ({ pod, originalPod }) => {
         if (!pod) {
-          // Fallback para métricas zeradas se não conseguir buscar o pod
-          return {
-            pod: originalPod,
-            metrics: {
-              cpu: { current: '0m', requests: null, limits: null, percentage: 0 },
-              memory: { current: '0Mi', requests: null, limits: null, percentage: 0 }
-            }
-          };
+          return { pod: originalPod, metrics: unknownMetrics() };
         }
 
         try {
-          let realMetrics;
-          if (allPodMetrics) {
-            // Usar métricas reais do batch
-            const podMetrics = allPodMetrics.find(item => item.metadata.name === pod.metadata.name);
-            if (podMetrics) {
-              realMetrics = await processPodMetricsFromBatch(pod, podMetrics);
-            } else {
-              realMetrics = calculateRealPodMetrics(pod);
-            }
-          } else {
-            // Fallback para cálculo baseado em requests/limits
-            realMetrics = calculateRealPodMetrics(pod);
-          }
-          
-          return { pod: originalPod, metrics: realMetrics };
+          const podMetrics = allPodMetrics?.find(item => item.metadata.name === pod.metadata.name);
+          const metrics = podMetrics
+            ? buildPodMetrics(pod, podMetrics)
+            : podResourcesWithoutUsage(pod);
+
+          return { pod: originalPod, metrics };
         } catch (error) {
           console.error(`Erro ao processar métricas para pod ${pod.metadata.name}:`, error);
-          return {
-            pod: originalPod,
-            metrics: {
-              cpu: { current: '0m', requests: null, limits: null, percentage: 0 },
-              memory: { current: '0Mi', requests: null, limits: null, percentage: 0 }
-            }
-          };
+          return { pod: originalPod, metrics: unknownMetrics() };
         }
       })
     );
@@ -522,58 +493,44 @@ ipcMain.handle('get-pods-metrics-batch', async (event, connectionId, pods) => {
     return results;
   } catch (error) {
     console.error('Erro ao buscar métricas em batch:', error);
-    // Fallback: retornar métricas zeradas para todos os pods
-    return pods.map(pod => ({
-      pod,
-      metrics: {
-        cpu: { current: '0m', requests: null, limits: null, percentage: 0 },
-        memory: { current: '0Mi', requests: null, limits: null, percentage: 0 }
-      }
-    }));
+    return pods.map(pod => ({ pod, metrics: unknownMetrics() }));
   }
 });
 
-// Função para processar métricas de um pod a partir do batch
-async function processPodMetricsFromBatch(pod, podMetrics) {
-  // Calcular recursos totais do pod
+// Combina o uso medido pelo Metrics Server com os requests/limits do spec.
+// percentage nulo = sem denominador (pod sem requests/limits), não zero: o uso
+// é real, apenas não há referência para uma barra de progresso.
+function buildPodMetrics(pod, podMetrics) {
   const totalResources = calculatePodTotalResources(pod.spec.containers);
-  
-  // Calcular uso total dos containers
+
   let totalCpuUsage = 0;
   let totalMemoryUsage = 0;
-  
-  if (podMetrics.containers) {
-    podMetrics.containers.forEach(container => {
-      // CPU usage (em nanocores)
-      if (container.usage?.cpu) {
-        totalCpuUsage += parseCpuToMillicores(container.usage.cpu);
-      }
-      
-      // Memory usage (em bytes)
-      if (container.usage?.memory) {
-        totalMemoryUsage += parseMemoryToMi(container.usage.memory);
-      }
-    });
+
+  for (const container of podMetrics.containers || []) {
+    if (container.usage?.cpu) {
+      totalCpuUsage += parseCpuToMillicores(container.usage.cpu);
+    }
+    if (container.usage?.memory) {
+      totalMemoryUsage += parseMemoryToMi(container.usage.memory);
+    }
   }
 
-  // Calcular porcentagens baseadas nos limits (fallback para requests se não houver limits)
-  const cpuLimits = totalResources.cpuLimits ? parseCpuToMillicores(totalResources.cpuLimits) : 
-                    (totalResources.cpuRequests ? parseCpuToMillicores(totalResources.cpuRequests) : 0);
-  const memoryLimits = totalResources.memoryLimits ? parseMemoryToMi(totalResources.memoryLimits) : 
-                       (totalResources.memoryRequests ? parseMemoryToMi(totalResources.memoryRequests) : 0);
+  // Referência é limits, com fallback para requests
+  const cpuReference = parseCpuToMillicores(totalResources.cpuLimits || totalResources.cpuRequests);
+  const memoryReference = parseMemoryToMi(totalResources.memoryLimits || totalResources.memoryRequests);
 
   return {
     cpu: {
       current: `${totalCpuUsage}m`,
       requests: totalResources.cpuRequests,
       limits: totalResources.cpuLimits,
-      percentage: cpuLimits > 0 ? Math.round((totalCpuUsage / cpuLimits) * 100) : 0
+      percentage: cpuReference > 0 ? Math.round((totalCpuUsage / cpuReference) * 100) : null
     },
     memory: {
       current: formatMemoryIntelligently(`${totalMemoryUsage}Mi`),
       requests: totalResources.memoryRequests,
       limits: totalResources.memoryLimits,
-      percentage: memoryLimits > 0 ? Math.round((totalMemoryUsage / memoryLimits) * 100) : 0
+      percentage: memoryReference > 0 ? Math.round((totalMemoryUsage / memoryReference) * 100) : null
     }
   };
 }
@@ -604,53 +561,13 @@ async function getRealPodMetrics(kc, podName, namespace, pod) {
 
     // Encontrar as métricas do pod específico
     const podMetrics = podMetricsResponse.body.items.find(item => item.metadata.name === podName);
-    
+
     if (!podMetrics) {
       throw new Error('Métricas do pod não encontradas');
     }
 
-    // Calcular recursos totais do pod
-    const totalResources = calculatePodTotalResources(pod.spec.containers);
-    
-    // Calcular uso total dos containers
-    let totalCpuUsage = 0;
-    let totalMemoryUsage = 0;
-    
-    if (podMetrics.containers) {
-      podMetrics.containers.forEach(container => {
-        // CPU usage (em nanocores)
-        if (container.usage?.cpu) {
-          totalCpuUsage += parseCpuToMillicores(container.usage.cpu);
-        }
-        
-        // Memory usage (em bytes)
-        if (container.usage?.memory) {
-          totalMemoryUsage += parseMemoryToMi(container.usage.memory);
-        }
-      });
-    }
+    return buildPodMetrics(pod, podMetrics);
 
-    // Calcular porcentagens baseadas nos limits (fallback para requests se não houver limits)
-    const cpuLimits = totalResources.cpuLimits ? parseCpuToMillicores(totalResources.cpuLimits) : 
-                      (totalResources.cpuRequests ? parseCpuToMillicores(totalResources.cpuRequests) : 0);
-    const memoryLimits = totalResources.memoryLimits ? parseMemoryToMi(totalResources.memoryLimits) : 
-                         (totalResources.memoryRequests ? parseMemoryToMi(totalResources.memoryRequests) : 0);
-
-    return {
-      cpu: {
-        current: `${totalCpuUsage}m`,
-        requests: totalResources.cpuRequests,
-        limits: totalResources.cpuLimits,
-        percentage: cpuLimits > 0 ? Math.round((totalCpuUsage / cpuLimits) * 100) : 0
-      },
-      memory: {
-        current: formatMemoryIntelligently(`${totalMemoryUsage}Mi`),
-        requests: totalResources.memoryRequests,
-        limits: totalResources.memoryLimits,
-        percentage: memoryLimits > 0 ? Math.round((totalMemoryUsage / memoryLimits) * 100) : 0
-      }
-    };
-    
   } catch (error) {
     // Se a API de métricas não estiver disponível, tentar método alternativo
     if (error.status === 404 || error.message.includes('metrics.k8s.io')) {
@@ -660,59 +577,34 @@ async function getRealPodMetrics(kc, podName, namespace, pod) {
   }
 }
 
-// Função para calcular métricas reais de um pod (fallback)
-function calculateRealPodMetrics(pod) {
-  const containers = pod.spec.containers;
-  let totalCpuRequests = 0;
-  let totalCpuLimits = 0;
-  let totalMemoryRequests = 0;
-  let totalMemoryLimits = 0;
-
-  containers.forEach(container => {
-    if (container.resources) {
-      // CPU Requests
-      if (container.resources.requests?.cpu) {
-        totalCpuRequests += parseCpuToMillicores(container.resources.requests.cpu);
-      }
-      
-      // CPU Limits
-      if (container.resources.limits?.cpu) {
-        totalCpuLimits += parseCpuToMillicores(container.resources.limits.cpu);
-      }
-      
-      // Memory Requests
-      if (container.resources.requests?.memory) {
-        totalMemoryRequests += parseMemoryToMi(container.resources.requests.memory);
-      }
-      
-      // Memory Limits
-      if (container.resources.limits?.memory) {
-        totalMemoryLimits += parseMemoryToMi(container.resources.limits.memory);
-      }
-    }
-  });
-
-  // Para uso atual, vamos simular baseado nos limits (fallback para requests se não houver limits)
-  // Mas agora usando os valores reais dos limits como base
-  const cpuLimits = totalCpuLimits > 0 ? totalCpuLimits : totalCpuRequests;
-  const memoryLimits = totalMemoryLimits > 0 ? totalMemoryLimits : totalMemoryRequests;
-  
-  const cpuCurrent = cpuLimits > 0 ? Math.floor(cpuLimits * (0.1 + Math.random() * 0.3)) : 0;
-  const memoryCurrent = memoryLimits > 0 ? Math.floor(memoryLimits * (0.1 + Math.random() * 0.4)) : 0;
+// Métricas de um pod sem o uso atual: requests/limits vêm do spec e são dados
+// reais, mas o consumo só existe via Metrics Server. current/percentage nulos
+// sinalizam "indisponível" para a UI — nunca estimar, ou o usuário não
+// consegue distinguir de medição real.
+function podResourcesWithoutUsage(pod) {
+  const totalResources = calculatePodTotalResources(pod.spec.containers);
 
   return {
     cpu: {
-      current: `${cpuCurrent}m`,
-      requests: totalCpuRequests > 0 ? `${totalCpuRequests}m` : null,
-      limits: totalCpuLimits > 0 ? `${totalCpuLimits}m` : null,
-      percentage: cpuLimits > 0 ? Math.round((cpuCurrent / cpuLimits) * 100) : 0
+      current: null,
+      requests: totalResources.cpuRequests,
+      limits: totalResources.cpuLimits,
+      percentage: null
     },
     memory: {
-      current: formatMemoryIntelligently(`${memoryCurrent}Mi`),
-      requests: totalMemoryRequests > 0 ? formatMemoryIntelligently(`${totalMemoryRequests}Mi`) : null,
-      limits: totalMemoryLimits > 0 ? formatMemoryIntelligently(`${totalMemoryLimits}Mi`) : null,
-      percentage: memoryLimits > 0 ? Math.round((memoryCurrent / memoryLimits) * 100) : 0
+      current: null,
+      requests: totalResources.memoryRequests,
+      limits: totalResources.memoryLimits,
+      percentage: null
     }
+  };
+}
+
+// Métricas totalmente desconhecidas: nem o spec do pod pôde ser lido.
+function unknownMetrics() {
+  return {
+    cpu: { current: null, requests: null, limits: null, percentage: null },
+    memory: { current: null, requests: null, limits: null, percentage: null }
   };
 }
 

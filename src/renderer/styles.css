@@ -875,6 +875,14 @@ body {
     flex-shrink: 0;
 }
 
+/* Uso atual indisponível (sem Metrics Server) — visivelmente distinto de um valor medido */
+.resource-value-unavailable {
+    color: #8a8a8a;
+    font-weight: 400;
+    font-style: italic;
+    cursor: help;
+}
+
 .progress-bar-container {
     flex: 1;
     min-width: 0;
