@@ -1164,46 +1164,56 @@ function calculateAge(creationTimestamp) {
     return '<1m';
 }
 
-function showServiceContextMenu(event, serviceName, namespace) {
+// Abre um menu de contexto na posição do clique. Cada item é
+// { icon, label, action }; action roda ao clicar, com o menu já fechado.
+function showContextMenu(event, items) {
     event.stopPropagation();
-    
-    // Remove menu anterior se existir
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-        existingMenu.remove();
-    }
+
+    document.querySelector('.context-menu')?.remove();
 
     const menu = document.createElement('div');
     menu.className = 'context-menu';
     menu.style.position = 'fixed';
-    menu.style.left = event.pageX + 'px';
-    menu.style.top = event.pageY + 'px';
+    menu.style.left = `${event.pageX}px`;
+    menu.style.top = `${event.pageY}px`;
     menu.style.zIndex = '1000';
 
-    menu.innerHTML = `
-        <div class="context-menu-item" onclick="showServiceDetails('${serviceName}', '${namespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-eye"></i>
-            Ver Detalhes
-        </div>
-        <div class="context-menu-item" onclick="showServiceYAML('${serviceName}', '${namespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-code"></i>
-            Ver YAML
-        </div>
-    `;
+    const close = () => {
+        menu.remove();
+        document.removeEventListener('click', onDocumentClick);
+    };
+
+    const onDocumentClick = (e) => {
+        if (!menu.contains(e.target)) close();
+    };
+
+    for (const { icon, label, action } of items) {
+        const item = document.createElement('div');
+        item.className = 'context-menu-item';
+
+        const iconEl = document.createElement('i');
+        iconEl.className = `bi ${icon}`;
+        item.append(iconEl, ` ${label}`);
+
+        item.addEventListener('click', () => {
+            close();
+            action();
+        });
+
+        menu.appendChild(item);
+    }
 
     document.body.appendChild(menu);
 
-    // Remove menu ao clicar fora
-    const removeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener('click', removeMenu);
-        }
-    };
+    // O clique que abriu o menu ainda está propagando; adiar evita fechá-lo na hora
+    setTimeout(() => document.addEventListener('click', onDocumentClick), 100);
+}
 
-    setTimeout(() => {
-        document.addEventListener('click', removeMenu);
-    }, 100);
+function showServiceContextMenu(event, serviceName, namespace) {
+    showContextMenu(event, [
+        { icon: 'bi-eye', label: 'Ver Detalhes', action: () => showServiceDetails(serviceName, namespace) },
+        { icon: 'bi-file-code', label: 'Ver YAML', action: () => showServiceYAML(serviceName, namespace) }
+    ]);
 }
 
 async function showServiceDetails(serviceName, namespace) {
@@ -1257,13 +1267,19 @@ async function showServiceYAML(serviceName, namespace) {
         
         // Mostrar seção de YAML
         switchSection('serviceYaml');
-        
-        // Inicializar editor YAML
-        initializeServiceYamlEditor(yamlContent);
-        
-        // Configurar botões
-        setupServiceYAMLButtons(serviceName, namespace, yamlContent);
-        
+
+        renderYamlEditor('serviceYamlContent', yamlContent);
+
+        setupYAMLButtons({
+            backBtnId: 'backToServicesFromYamlBtn',
+            copyBtnId: 'copyServiceYamlBtn',
+            downloadBtnId: 'downloadServiceYamlBtn',
+            backSection: 'services',
+            name: serviceName,
+            namespace,
+            yaml: yamlContent
+        });
+
         showLoading(false);
     } catch (error) {
         console.error('Erro ao exibir YAML do service:', error);
@@ -1273,84 +1289,76 @@ async function showServiceYAML(serviceName, namespace) {
 }
 
 
-function initializeServiceYamlEditor(yamlContent) {
-    const editorContainer = document.getElementById('serviceYamlContent');
+// Baixa conteúdo como arquivo via blob temporário.
+function downloadBlob(content, filename, mimeType = 'text/plain') {
+    const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Renderiza YAML com realce de sintaxe no container indicado.
+function renderYamlEditor(containerId, yamlContent) {
+    const editorContainer = document.getElementById(containerId);
     if (!editorContainer) {
-        console.error('Container do editor YAML não encontrado');
+        console.error(`Container do editor YAML não encontrado: ${containerId}`);
         return;
     }
-    
-    // Limpar container
+
     editorContainer.innerHTML = '';
 
-    try {
-        const pre = document.createElement('pre');
-        pre.className = 'line-numbers';
-        const code = document.createElement('code');
-        code.className = 'language-yaml';
-        code.textContent = yamlContent;
-        pre.appendChild(code);
-        editorContainer.appendChild(pre);
-        if (typeof Prism !== 'undefined') {
-            Prism.highlightElement(code);
-        }
-    } catch (error) {
-        console.error('Erro ao criar editor YAML:', error);
-        editorContainer.innerHTML = `<pre class="line-numbers"><code class="language-yaml">${yamlContent}</code></pre>`;
+    const pre = document.createElement('pre');
+    pre.className = 'line-numbers';
+    const code = document.createElement('code');
+    code.className = 'language-yaml';
+    code.textContent = yamlContent;
+    pre.appendChild(code);
+    editorContainer.appendChild(pre);
+
+    if (typeof Prism !== 'undefined') {
+        Prism.highlightElement(code);
     }
 }
 
-function setupServiceYAMLButtons(name, namespace, yaml) {
-    // Botão voltar
-    const backBtn = document.getElementById('backToServicesFromYamlBtn');
-    if (backBtn) {
-        backBtn.replaceWith(backBtn.cloneNode(true));
-        const newBackBtn = document.getElementById('backToServicesFromYamlBtn');
-        newBackBtn.addEventListener('click', () => {
-            switchSection('services');
-            loadCurrentSection();
-        });
-    }
-    
-    // Botão copiar
-    const copyBtn = document.getElementById('copyServiceYamlBtn');
-    if (copyBtn) {
-        copyBtn.replaceWith(copyBtn.cloneNode(true));
-        const newCopyBtn = document.getElementById('copyServiceYamlBtn');
-        newCopyBtn.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(yaml);
-                showToast('YAML copiado para a área de transferência!', 'success');
-            } catch (error) {
-                console.error('Erro ao copiar YAML:', error);
-                showToast('Erro ao copiar YAML', 'error');
-            }
-        });
-    }
-    
-    // Botão download
-    const downloadBtn = document.getElementById('downloadServiceYamlBtn');
-    if (downloadBtn) {
-        downloadBtn.replaceWith(downloadBtn.cloneNode(true));
-        const newDownloadBtn = document.getElementById('downloadServiceYamlBtn');
-        newDownloadBtn.addEventListener('click', () => {
-            try {
-                const blob = new Blob([yaml], { type: 'text/yaml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${name}-${namespace}.yaml`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                showToast('YAML baixado com sucesso!', 'success');
-            } catch (error) {
-                console.error('Erro ao baixar YAML:', error);
-                showToast('Erro ao baixar YAML', 'error');
-            }
-        });
-    }
+// Devolve o botão sem os listeners de aberturas anteriores da tela.
+function resetButton(id) {
+    const btn = document.getElementById(id);
+    if (!btn) return null;
+
+    btn.replaceWith(btn.cloneNode(true));
+    return document.getElementById(id);
+}
+
+// Liga os botões voltar/copiar/baixar de uma tela de YAML.
+function setupYAMLButtons({ backBtnId, copyBtnId, downloadBtnId, backSection, name, namespace, yaml }) {
+    resetButton(backBtnId)?.addEventListener('click', () => {
+        switchSection(backSection);
+        loadCurrentSection();
+    });
+
+    resetButton(copyBtnId)?.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(yaml);
+            showToast('YAML copiado para a área de transferência!', 'success');
+        } catch (error) {
+            console.error('Erro ao copiar YAML:', error);
+            showToast('Erro ao copiar YAML', 'error');
+        }
+    });
+
+    resetButton(downloadBtnId)?.addEventListener('click', () => {
+        try {
+            downloadBlob(yaml, `${name}-${namespace}.yaml`, 'text/yaml');
+            showToast('YAML baixado com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao baixar YAML:', error);
+            showToast('Erro ao baixar YAML', 'error');
+        }
+    });
 }
 
 async function showDeploymentYAML(name, namespace) {
@@ -1376,97 +1384,23 @@ async function showDeploymentYAML(name, namespace) {
         
         // Mudar para a seção de YAML
         switchSection('deploymentYAML');
-        
-        // Inicializar editor YAML
-        initializeDeploymentYamlEditor(yaml);
-        
-        // Configurar botões
-        setupDeploymentYAMLButtons(name, namespace, yaml);
-        
+
+        renderYamlEditor('deploymentYamlEditor', yaml);
+
+        setupYAMLButtons({
+            backBtnId: 'backToDeploymentDetailsBtn',
+            copyBtnId: 'copyDeploymentYamlBtn',
+            downloadBtnId: 'downloadDeploymentYamlBtn',
+            backSection: 'deployments',
+            name,
+            namespace,
+            yaml
+        });
+
         showLoading(false);
     } catch (error) {
         console.error('Erro ao exibir YAML do deployment:', error);
         showError(`Erro ao exibir YAML: ${error.message}`);
-    }
-}
-
-function initializeDeploymentYamlEditor(yamlContent) {
-    const editorContainer = document.getElementById('deploymentYamlEditor');
-    if (!editorContainer) {
-        console.error('Container do editor YAML não encontrado');
-        return;
-    }
-    
-    // Limpar container
-    editorContainer.innerHTML = '';
-
-    try {
-        const pre = document.createElement('pre');
-        pre.className = 'line-numbers';
-        const code = document.createElement('code');
-        code.className = 'language-yaml';
-        code.textContent = yamlContent;
-        pre.appendChild(code);
-        editorContainer.appendChild(pre);
-        if (typeof Prism !== 'undefined') {
-            Prism.highlightElement(code);
-        }
-    } catch (error) {
-        console.error('Erro ao criar editor YAML:', error);
-        editorContainer.innerHTML = `<pre class="line-numbers"><code class="language-yaml">${yamlContent}</code></pre>`;
-    }
-}
-
-function setupDeploymentYAMLButtons(name, namespace, yaml) {
-    // Botão voltar
-    const backBtn = document.getElementById('backToDeploymentDetailsBtn');
-    if (backBtn) {
-        backBtn.replaceWith(backBtn.cloneNode(true));
-        const newBackBtn = document.getElementById('backToDeploymentDetailsBtn');
-        newBackBtn.addEventListener('click', () => {
-            switchSection('deployments');
-            loadCurrentSection();
-        });
-    }
-    
-    // Botão copiar
-    const copyBtn = document.getElementById('copyDeploymentYamlBtn');
-    if (copyBtn) {
-        copyBtn.replaceWith(copyBtn.cloneNode(true));
-        const newCopyBtn = document.getElementById('copyDeploymentYamlBtn');
-        newCopyBtn.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(yaml);
-                showToast('YAML copiado para a área de transferência!', 'success');
-            } catch (error) {
-                console.error('Erro ao copiar YAML:', error);
-                showToast('Erro ao copiar YAML', 'error');
-            }
-        });
-    }
-    
-    // Botão download
-    const downloadBtn = document.getElementById('downloadDeploymentYamlBtn');
-    if (downloadBtn) {
-        downloadBtn.replaceWith(downloadBtn.cloneNode(true));
-        const newDownloadBtn = document.getElementById('downloadDeploymentYamlBtn');
-        newDownloadBtn.addEventListener('click', () => {
-            try {
-                const blob = new Blob([yaml], { type: 'text/yaml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${name}-${namespace}.yaml`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                showToast('YAML baixado com sucesso!', 'success');
-            } catch (error) {
-                console.error('Erro ao baixar YAML:', error);
-                showToast('Erro ao baixar YAML', 'error');
-            }
-        });
     }
 }
 
@@ -3072,16 +3006,7 @@ function downloadLogs(format) {
         }
     }
 
-    const blob = new Blob([content], { type: format === 'csv' ? 'text/csv' : 'text/plain' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadBlob(content, filename, format === 'csv' ? 'text/csv' : 'text/plain');
 }
 
 function copyLogs(format) {
@@ -3151,108 +3076,23 @@ function showLogsModeIndicator(mode) {
 
 // Função para mostrar menu de contexto do pod
 function showPodContextMenu(event, podName, podNamespace) {
-    event.stopPropagation();
-    
-    // Remove menu anterior se existir
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-        existingMenu.remove();
-    }
-
-    const menu = document.createElement('div');
-    menu.className = 'context-menu';
-    menu.style.position = 'fixed';
-    menu.style.left = event.pageX + 'px';
-    menu.style.top = event.pageY + 'px';
-    menu.style.zIndex = '1000';
-
-    menu.innerHTML = `
-        <div class="context-menu-item" onclick="showPodLogs('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-text"></i>
-            Ver Logs
-        </div>
-        <div class="context-menu-item" onclick="showPodDetails('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-eye"></i>
-            Detalhes
-        </div>
-        <div class="context-menu-item" onclick="showPodYaml('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-code"></i>
-            YAML
-        </div>
-        <div class="context-menu-item" onclick="reloadPod('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-arrow-clockwise"></i>
-            Reiniciar
-        </div>
-    `;
-
-    document.body.appendChild(menu);
-
-    // Remove menu ao clicar fora
-    const removeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener('click', removeMenu);
-        }
-    };
-
-    setTimeout(() => {
-        document.addEventListener('click', removeMenu);
-    }, 100);
+    showContextMenu(event, [
+        { icon: 'bi-file-text', label: 'Ver Logs', action: () => showPodLogs(podName, podNamespace) },
+        { icon: 'bi-eye', label: 'Detalhes', action: () => showPodDetails(podName, podNamespace) },
+        { icon: 'bi-file-code', label: 'YAML', action: () => showPodYaml(podName, podNamespace) },
+        { icon: 'bi-arrow-clockwise', label: 'Reiniciar', action: () => reloadPod(podName, podNamespace) }
+    ]);
 }
 
 // Função para mostrar menu de contexto de deployment
 function showDeploymentContextMenu(event, deploymentName, deploymentNamespace) {
-    event.stopPropagation();
-    
-    // Remove menu anterior se existir
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-        existingMenu.remove();
-    }
-
-    const menu = document.createElement('div');
-    menu.className = 'context-menu';
-    menu.style.position = 'fixed';
-    menu.style.left = event.pageX + 'px';
-    menu.style.top = event.pageY + 'px';
-    menu.style.zIndex = '1000';
-
-    menu.innerHTML = `
-        <div class="context-menu-item" onclick="showDeploymentLogs('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-text"></i>
-            Ver Logs
-        </div>
-        <div class="context-menu-item" onclick="showDeploymentDetails('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-eye"></i>
-            Detalhes
-        </div>
-        <div class="context-menu-item" onclick="showDeploymentYAML('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-code"></i>
-            YAML
-        </div>
-        <div class="context-menu-item" onclick="restartDeployment('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-arrow-clockwise"></i>
-            Reiniciar
-        </div>
-        <div class="context-menu-item" onclick="scaleDeployment('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-arrows-fullscreen"></i>
-            Escalar
-        </div>
-    `;
-
-    document.body.appendChild(menu);
-
-    // Remove menu ao clicar fora
-    const removeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener('click', removeMenu);
-        }
-    };
-
-    setTimeout(() => {
-        document.addEventListener('click', removeMenu);
-    }, 100);
+    showContextMenu(event, [
+        { icon: 'bi-file-text', label: 'Ver Logs', action: () => showDeploymentLogs(deploymentName, deploymentNamespace) },
+        { icon: 'bi-eye', label: 'Detalhes', action: () => showDeploymentDetails(deploymentName, deploymentNamespace) },
+        { icon: 'bi-file-code', label: 'YAML', action: () => showDeploymentYAML(deploymentName, deploymentNamespace) },
+        { icon: 'bi-arrow-clockwise', label: 'Reiniciar', action: () => restartDeployment(deploymentName, deploymentNamespace) },
+        { icon: 'bi-arrows-fullscreen', label: 'Escalar', action: () => scaleDeployment(deploymentName, deploymentNamespace) }
+    ]);
 }
 
 // Função para mostrar logs de um deployment (logs agregados de todos os pods)
@@ -3983,18 +3823,7 @@ function downloadYaml() {
         return;
     }
 
-    const filename = `pod-${currentPodName}-${currentPodNamespace}.yaml`;
-    const blob = new Blob([currentYamlContent], { type: 'text/yaml' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
+    downloadBlob(currentYamlContent, `pod-${currentPodName}-${currentPodNamespace}.yaml`, 'text/yaml');
     showToast('YAML baixado com sucesso', 'success');
 }
 
