@@ -33,6 +33,7 @@ class DeploymentService {
                 upToDate: deployment.status.updatedReplicas || 0,
                 available: deployment.status.availableReplicas || 0,
                 age: formatAge(deployment.metadata.creationTimestamp),
+                creationTimestamp: deployment.metadata.creationTimestamp,
                 replicas: deployment.spec.replicas || 0,
                 readyReplicas: deployment.status.readyReplicas || 0,
                 conditions: deployment.status.conditions || [],

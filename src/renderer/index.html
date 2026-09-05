@@ -112,7 +112,7 @@
             </div>
 
             <div class="sidebar-content">
-                <div class="navigation" id="navigation">
+                <nav class="navigation" id="navigation" aria-label="Seções">
                     <h3>Workload</h3>
                     <ul class="nav-menu">
                         <li><a href="#" data-section="pods" class="nav-link active">Pods</a></li>
@@ -122,10 +122,10 @@
                     <h3>Networking</h3>
                     <ul class="nav-menu">
                         <li><a href="#" data-section="services" class="nav-link">Services</a></li>
-                        <li><a href="#" data-section="ingresses" class="nav-link active">Ingresses</a></li>
+                        <li><a href="#" data-section="ingresses" class="nav-link">Ingresses</a></li>
                         <li><a href="#" data-section="endpoints" class="nav-link">Endpoints</a></li>
                     </ul>
-                </div>
+                </nav>
 
                 <div class="cluster-info" id="clusterInfo">
                     <h3>Cluster Atual</h3>
@@ -158,6 +158,8 @@
                         <span id="deploymentsCount" style="display: none;">0 deployments</span>
                         <span id="servicesCount" style="display: none;">0 services</span>
                         <span id="namespacesCount" style="display: none;">0 namespaces</span>
+                        <span id="ingressesCount" style="display: none;">0 ingresses</span>
+                        <span id="endpointsCount" style="display: none;">0 endpoints</span>
                     </div>
 
                     <div class="dashboard-controls">
@@ -169,7 +171,7 @@
                         </div>
 
                         <div class="search-box">
-                            <input type="text" id="searchInput" placeholder="Buscar pods...">
+                            <input type="search" id="searchInput" placeholder="Buscar pods..." aria-label="Buscar na seção atual">
                         </div>
 
                         <button id="refreshBtn" class="btn-secondary">
@@ -194,18 +196,19 @@
 
                 <div class="dashboard-content">
                     <!-- Loading indicator -->
-                    <div id="loadingIndicator" class="loading" style="display: none;">
+                    <div id="loadingIndicator" class="loading" style="display: none;" role="status" aria-live="polite">
                         <div class="spinner"></div>
                         <p>Carregando...</p>
                     </div>
 
                     <!-- Error message -->
-                    <div id="errorMessage" class="error-message" style="display: none;">
+                    <div id="errorMessage" class="error-message" style="display: none;" role="alert">
                         <div class="error-icon">⚠️</div>
                         <div class="error-content">
                             <h3>Erro</h3>
                             <p id="errorText"></p>
                         </div>
+                        <button id="dismissErrorBtn" class="error-dismiss" title="Fechar" aria-label="Fechar mensagem de erro">&times;</button>
                     </div>
 
                     <!-- Pods Table -->
@@ -263,17 +266,61 @@
                             <table class="pods-table">
                                 <thead>
                                     <tr>
-                                        <th>Nome</th>
-                                        <th>Namespace</th>
-                                        <th>Tipo</th>
-                                        <th>Cluster IP</th>
-                                        <th>External IP</th>
-                                        <th>Portas</th>
-                                        <th>Age</th>
+                                        <th data-column="name">Nome</th>
+                                        <th data-column="namespace">Namespace</th>
+                                        <th data-column="type">Tipo</th>
+                                        <th data-column="clusterIP">Cluster IP</th>
+                                        <th data-column="externalIP">External IP</th>
+                                        <th data-column="ports">Portas</th>
+                                        <th data-column="age">Age</th>
+                                        <th class="actions-column">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody id="servicesTableBody">
                                     <!-- Services will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Ingresses Section -->
+                    <div id="ingressesSection" class="content-section">
+                        <div class="table-container">
+                            <table class="pods-table">
+                                <thead>
+                                    <tr>
+                                        <th data-column="name">Nome</th>
+                                        <th data-column="namespace">Namespace</th>
+                                        <th data-column="className">Class</th>
+                                        <th data-column="hosts">Hosts</th>
+                                        <th data-column="address">Address</th>
+                                        <th data-column="ports">Portas</th>
+                                        <th data-column="age">Age</th>
+                                        <th class="actions-column">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ingressesTableBody">
+                                    <!-- Ingresses will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Endpoints Section -->
+                    <div id="endpointsSection" class="content-section">
+                        <div class="table-container">
+                            <table class="pods-table">
+                                <thead>
+                                    <tr>
+                                        <th data-column="name">Nome</th>
+                                        <th data-column="namespace">Namespace</th>
+                                        <th data-column="addresses">Endpoints</th>
+                                        <th data-column="age">Age</th>
+                                        <th class="actions-column">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="endpointsTableBody">
+                                    <!-- Endpoints will be populated here -->
                                 </tbody>
                             </table>
                         </div>
@@ -291,9 +338,9 @@
                             <table class="namespaces-table">
                                 <thead>
                                     <tr>
-                                        <th>Nome</th>
-                                        <th>Status</th>
-                                        <th>Age</th>
+                                        <th data-column="name">Nome</th>
+                                        <th data-column="status">Status</th>
+                                        <th data-column="age">Age</th>
                                     </tr>
                                 </thead>
                                 <tbody id="namespacesTableBody">
@@ -796,6 +843,64 @@
                         <div class="yaml-container">
                             <div id="serviceYamlContent" class="yaml-editor">
                                 <!-- Service YAML will be displayed here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="ingressYamlSection" class="content-section">
+                        <div class="section-header">
+                            <div class="yaml-header-left">
+                                <button id="backToIngressesFromYamlBtn" class="btn-secondary" title="Voltar aos Ingresses">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="ingressYamlTitle">YAML do Ingress</h3>
+                            </div>
+                            <div class="yaml-header-right">
+                                <div class="yaml-actions">
+                                    <button id="copyIngressYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copiar
+                                    </button>
+                                    <button id="downloadIngressYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-download"></i>
+                                        Baixar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="yaml-container">
+                            <div id="ingressYamlContent" class="yaml-editor">
+                                <!-- Ingress YAML will be displayed here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="endpointYamlSection" class="content-section">
+                        <div class="section-header">
+                            <div class="yaml-header-left">
+                                <button id="backToEndpointsFromYamlBtn" class="btn-secondary" title="Voltar aos Endpoints">
+                                    <span class="btn-icon">←</span>
+                                </button>
+                                <h3 id="endpointYamlTitle">YAML do Endpoint</h3>
+                            </div>
+                            <div class="yaml-header-right">
+                                <div class="yaml-actions">
+                                    <button id="copyEndpointYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copiar
+                                    </button>
+                                    <button id="downloadEndpointYamlBtn" class="btn-secondary">
+                                        <i class="bi bi-download"></i>
+                                        Baixar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="yaml-container">
+                            <div id="endpointYamlContent" class="yaml-editor">
+                                <!-- Endpoint YAML will be displayed here -->
                             </div>
                         </div>
                     </div>

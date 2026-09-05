@@ -5,6 +5,7 @@ const os = require('os');
 const k8s = require('@kubernetes/client-node');
 const yaml = require('js-yaml');
 const { formatAge } = require('./shared/formatAge');
+const { computePodStatus } = require('./shared/podStatus');
 const LogService = require('./main/services/LogService');
 const DeploymentService = require('./main/services/DeploymentService');
 
@@ -210,10 +211,11 @@ handleWithCluster('get-pods', 'buscar pods', async (kc, namespace = 'default') =
   return response.body.items.map(pod => ({
     name: pod.metadata.name,
     namespace: pod.metadata.namespace,
-    status: pod.status.phase,
-    ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
-    restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
+    // status/ready/restarts saem do mesmo cálculo que o kubectl usa: a fase
+    // sozinha mostraria "Running" para um pod em CrashLoopBackOff
+    ...computePodStatus(pod),
     age: formatAge(pod.metadata.creationTimestamp),
+    creationTimestamp: pod.metadata.creationTimestamp,
     node: pod.spec.nodeName,
     ip: pod.status.podIP,
     containers: pod.spec.containers.map(container => ({
@@ -256,7 +258,8 @@ handleWithCluster('get-namespaces', 'buscar namespaces', async (kc) => {
   return response.body.items.map(ns => ({
     name: ns.metadata.name,
     status: ns.status.phase,
-    age: formatAge(ns.metadata.creationTimestamp)
+    age: formatAge(ns.metadata.creationTimestamp),
+    creationTimestamp: ns.metadata.creationTimestamp
   }));
 });
 
@@ -657,3 +660,109 @@ handleWithCluster('restart-deployment', 'reiniciar deployment',
 // END DEPLOYMENT HANDLERS
 // ============================================================================
 
+
+// ============================================================================
+// NETWORKING HANDLERS (Ingresses / Endpoints)
+// ============================================================================
+
+// Concatena os endereços de entrada de um Ingress: os hosts declarados nas
+// regras. Sem host a regra vale para qualquer host, o que o kubectl mostra
+// como "*".
+function ingressHosts(ingress) {
+  const rules = ingress.spec?.rules || [];
+  const hosts = rules.map(rule => rule.host || '*');
+
+  return [...new Set(hosts)];
+}
+
+// Endereços já atribuídos pelo controller (equivalente à coluna ADDRESS do
+// kubectl). Fica vazio enquanto o ingress não foi programado.
+function ingressAddresses(ingress) {
+  const entries = ingress.status?.loadBalancer?.ingress || [];
+
+  return entries.map(entry => entry.ip || entry.hostname).filter(Boolean);
+}
+
+// Portas expostas: 80 sempre, 443 quando há bloco TLS — mesma heurística do
+// kubectl, já que o Ingress não declara portas explicitamente.
+function ingressPorts(ingress) {
+  const ports = ['80'];
+  if (ingress.spec?.tls?.length) ports.push('443');
+
+  return ports;
+}
+
+handleWithCluster('get-ingresses', 'buscar ingresses', async (kc, namespace = 'default') => {
+  const k8sApi = kc.makeApiClient(k8s.NetworkingV1Api);
+  const response = namespace === 'all'
+    ? await k8sApi.listIngressForAllNamespaces()
+    : await k8sApi.listNamespacedIngress(namespace);
+
+  return response.body.items.map(ingress => ({
+    name: ingress.metadata.name,
+    namespace: ingress.metadata.namespace,
+    className: ingress.spec?.ingressClassName || '-',
+    hosts: ingressHosts(ingress),
+    addresses: ingressAddresses(ingress),
+    ports: ingressPorts(ingress),
+    age: formatAge(ingress.metadata.creationTimestamp),
+    creationTimestamp: ingress.metadata.creationTimestamp
+  }));
+});
+
+handleWithCluster('get-ingress-yaml', 'buscar YAML do ingress', async (kc, name, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.NetworkingV1Api);
+  const response = await k8sApi.readNamespacedIngress(name, namespace);
+
+  return toCleanYaml(response.body);
+});
+
+// Achata os subsets de um Endpoints em "ip:porta", como a coluna ENDPOINTS do
+// kubectl. Cada subset combina todos os seus endereços com todas as suas
+// portas.
+function endpointAddresses(endpoints) {
+  const result = [];
+
+  for (const subset of endpoints.subsets || []) {
+    const ports = subset.ports || [];
+    for (const address of subset.addresses || []) {
+      if (ports.length === 0) {
+        result.push(address.ip);
+      } else {
+        for (const port of ports) result.push(`${address.ip}:${port.port}`);
+      }
+    }
+  }
+
+  return result;
+}
+
+handleWithCluster('get-endpoints', 'buscar endpoints', async (kc, namespace = 'default') => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = namespace === 'all'
+    ? await k8sApi.listEndpointsForAllNamespaces()
+    : await k8sApi.listNamespacedEndpoints(namespace);
+
+  return response.body.items.map(endpoints => ({
+    name: endpoints.metadata.name,
+    namespace: endpoints.metadata.namespace,
+    addresses: endpointAddresses(endpoints),
+    // Contagem separada: um Endpoints sem addresses ainda pode ter pods
+    // não prontos, e a tela distingue "sem backend" de "backend não pronto".
+    notReadyCount: (endpoints.subsets || [])
+      .reduce((total, subset) => total + (subset.notReadyAddresses?.length || 0), 0),
+    age: formatAge(endpoints.metadata.creationTimestamp),
+    creationTimestamp: endpoints.metadata.creationTimestamp
+  }));
+});
+
+handleWithCluster('get-endpoint-yaml', 'buscar YAML do endpoint', async (kc, name, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedEndpoints(name, namespace);
+
+  return toCleanYaml(response.body);
+});
+
+// ============================================================================
+// END NETWORKING HANDLERS
+// ============================================================================

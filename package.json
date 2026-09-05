@@ -1,6 +1,6 @@
 {
   "name": "kubedesk",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Ferramenta para gerenciar clusters Kubernetes",
   "main": "src/main.js",
   "scripts": {
@@ -14,7 +14,7 @@
     "build:mac": "electron-builder --mac",
     "build:all": "electron-builder --linux --win --mac",
     "clean": "rm -rf dist",
-    "test:build": "./test-build.sh",
+    "test": "node test/run.js",
     "prebuild": "npm run clean"
   },
   "keywords": [
