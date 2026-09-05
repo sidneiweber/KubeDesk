@@ -1,6 +1,6 @@
 {
   "name": "kubedesk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Ferramenta para gerenciar clusters Kubernetes",
   "main": "src/main.js",
   "scripts": {
