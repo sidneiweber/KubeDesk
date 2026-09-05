@@ -30,7 +30,7 @@ class ServiceDetails {
         if (!this.service) return;
 
         const metadata = this.service.metadata;
-        const age = this.calculateAge(metadata.creationTimestamp);
+        const age = window.formatAge(metadata.creationTimestamp);
 
         document.getElementById('serviceDetailName').textContent = metadata.name;
         document.getElementById('serviceDetailNamespace').textContent = metadata.namespace;
@@ -199,25 +199,6 @@ class ServiceDetails {
             `).join('');
     }
 
-    /**
-     * Calcula a idade do service
-     */
-    calculateAge(creationTimestamp) {
-        if (!creationTimestamp) return '-';
-        
-        const now = new Date();
-        const created = new Date(creationTimestamp);
-        const diffMs = now - created;
-        
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-        const diffMinutes = Math.floor(diffMs / (1000 * 60));
-        
-        if (diffDays > 0) return `${diffDays}d`;
-        if (diffHours > 0) return `${diffHours}h`;
-        if (diffMinutes > 0) return `${diffMinutes}m`;
-        return '<1m';
-    }
 }
 
 // Instância global

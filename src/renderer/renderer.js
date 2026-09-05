@@ -1,7 +1,14 @@
 // Garantir que estamos usando o require do Node.js, não do AMD loader do Monaco
 const nodeRequire = window.nodeRequire || window.require || require;
 const { ipcRenderer } = nodeRequire('electron');
-const LogViewer = nodeRequire('./components/LogViewer');
+const LogsScreen = nodeRequire('./components/Logs/LogsScreen');
+const { formatAge } = nodeRequire('../shared/formatAge');
+const { computePodStatus, podStatusClass } = nodeRequire('../shared/podStatus');
+const { escapeHtml, downloadBlob } = nodeRequire('./utils/dom');
+
+// Exposto para os componentes carregados via <script>, que não têm um require
+// com caminho relativo confiável a partir de components/.
+window.formatAge = formatAge;
 
 // Estado da aplicação
 let currentConnectionId = null;
@@ -74,33 +81,167 @@ let autoRefreshInterval = null;
 const AUTO_REFRESH_INTERVAL = 10000; // 10 segundos
 let autoRefreshEnabled = true;
 
-// Estado dos logs
+// Última listagem recebida de cada seção. A busca filtra sobre isto: antes,
+// cada tecla digitada disparava uma listagem completa no cluster (duas, no
+// caso de pods, por causa das métricas).
+const sectionCache = {};
+
+function cacheSection(section, items) {
+    sectionCache[section] = items;
+    return items;
+}
+
+// ---------------------------------------------------------------------------
+// Ordenação por coluna
+// ---------------------------------------------------------------------------
+
+// { [seção]: { column, direction } }. Sem entrada = ordem que o cluster devolveu.
+const sortState = {};
+
+// Data como número, para ordenar Age de verdade: comparar "10m" com "2d" como
+// texto colocaria o pod mais novo no fim.
+function timeValue(timestamp) {
+    const parsed = timestamp ? new Date(timestamp).getTime() : NaN;
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+// Fração de containers prontos, para "1/3" vir antes de "2/3".
+function readyValue(readyCount, total) {
+    return total > 0 ? readyCount / total : -1;
+}
+
+// Como extrair o valor comparável de cada coluna, por seção. Colunas ausentes
+// aqui simplesmente não ordenam.
+const SORT_ACCESSORS = {
+    pods: {
+        name: p => p.name,
+        namespace: p => p.namespace,
+        status: p => p.status,
+        ready: p => readyValue(p.readyCount, p.totalContainers),
+        restarts: p => p.restarts,
+        age: p => timeValue(p.creationTimestamp),
+        cpuUsage: p => p.metrics?.cpu?.percentage ?? -1,
+        memoryUsage: p => p.metrics?.memory?.percentage ?? -1,
+        node: p => p.node,
+        ip: p => p.ip
+    },
+    deployments: {
+        name: d => d.name,
+        namespace: d => d.namespace,
+        status: d => readyValue(d.readyReplicas, d.replicas),
+        ready: d => readyValue(d.readyReplicas, d.replicas),
+        upToDate: d => d.upToDate,
+        available: d => d.available,
+        age: d => timeValue(d.creationTimestamp),
+        images: d => d.containerImages?.[0]?.image
+    },
+    services: {
+        name: s => s.metadata.name,
+        namespace: s => s.metadata.namespace,
+        type: s => s.spec.type,
+        clusterIP: s => s.spec.clusterIP,
+        externalIP: s => (s.spec.externalIPs || []).join(','),
+        ports: s => s.spec.ports?.length ?? 0,
+        age: s => timeValue(s.metadata.creationTimestamp)
+    },
+    ingresses: {
+        name: i => i.name,
+        namespace: i => i.namespace,
+        className: i => i.className,
+        hosts: i => i.hosts.join(','),
+        address: i => i.addresses.join(','),
+        ports: i => i.ports.length,
+        age: i => timeValue(i.creationTimestamp)
+    },
+    endpoints: {
+        name: e => e.name,
+        namespace: e => e.namespace,
+        addresses: e => e.addresses.length,
+        age: e => timeValue(e.creationTimestamp)
+    },
+    namespaces: {
+        name: n => n.name,
+        status: n => n.status,
+        age: n => timeValue(n.creationTimestamp)
+    }
+};
+
+// Devolve uma cópia ordenada; a lista em cache não é mexida, para a ordem
+// original continuar disponível.
+function sortItems(section, items) {
+    const state = sortState[section];
+    const accessor = state && SORT_ACCESSORS[section]?.[state.column];
+    if (!accessor) return items;
+
+    const factor = state.direction === 'desc' ? -1 : 1;
+
+    return [...items].sort((a, b) => {
+        const left = accessor(a);
+        const right = accessor(b);
+
+        if (left === right) return 0;
+        // Valores ausentes vão sempre para o fim, independente da direção
+        if (left === undefined || left === null) return 1;
+        if (right === undefined || right === null) return -1;
+
+        const result = typeof left === 'number' && typeof right === 'number'
+            ? left - right
+            : String(left).localeCompare(String(right), 'pt-BR', { numeric: true, sensitivity: 'base' });
+
+        return result * factor;
+    });
+}
+
+// Clique no cabeçalho alterna asc -> desc -> sem ordenação.
+function toggleSort(section, column) {
+    if (!SORT_ACCESSORS[section]?.[column]) return;
+
+    const current = sortState[section];
+
+    if (!current || current.column !== column) {
+        sortState[section] = { column, direction: 'asc' };
+    } else if (current.direction === 'asc') {
+        sortState[section] = { column, direction: 'desc' };
+    } else {
+        delete sortState[section];
+    }
+
+    SECTION_LOADERS[section]?.({ fromCache: true });
+}
+
+// Marca a coluna ordenada no cabeçalho. `aria-sort` é o que leitores de tela
+// anunciam, e a seta do CSS pendura nele.
+function updateSortIndicators(section) {
+    const table = document.querySelector(`#${section}Section table`);
+    if (!table) return;
+
+    const state = sortState[section];
+
+    table.querySelectorAll('thead th').forEach(th => {
+        const column = th.dataset.column;
+        const sortable = Boolean(SORT_ACCESSORS[section]?.[column]);
+
+        th.classList.toggle('sortable', sortable);
+        if (sortable && !th.hasAttribute('tabindex')) th.setAttribute('tabindex', '0');
+
+        if (sortable && state && state.column === column) {
+            th.setAttribute('aria-sort', state.direction === 'asc' ? 'ascending' : 'descending');
+        } else {
+            th.removeAttribute('aria-sort');
+        }
+    });
+}
+
+// Recurso aberto nas telas de detalhes/YAML. O estado da tela de logs vive
+// dentro de LogsScreen.
 let currentPodName = null;
 let currentPodNamespace = null;
-let currentDeploymentName = null;
-let currentDeploymentNamespace = null;
 let currentServiceName = null;
 let currentServiceNamespace = null;
-let currentDeploymentPods = [];
-let logsStreaming = false;
-let logsPaused = false;
-let logsData = [];
-let logsFilter = '';
-let currentLogStreamId = null;
-let logViewer = null;
-let logsOptions = {
-    lineWrap: true,
-    logColoring: true,
-    timestamp: 'off',
-    horizontalScroll: false
-};
 
 // Estado do YAML
 let currentYamlContent = '';
 let currentDeploymentYamlContent = '';
-
-// Configurações de performance
-const MAX_TOTAL_LOGS = 5000; // Máximo de logs mantidos em memória
 
 // Configurações de colunas
 const PODS_COLUMNS = {
@@ -166,11 +307,14 @@ const elements = {
     loadingIndicator: document.getElementById('loadingIndicator'),
     errorMessage: document.getElementById('errorMessage'),
     errorText: document.getElementById('errorText'),
+    dismissErrorBtn: document.getElementById('dismissErrorBtn'),
 
     // Seções de conteúdo
     podsSection: document.getElementById('podsSection'),
     deploymentsSection: document.getElementById('deploymentsSection'),
     servicesSection: document.getElementById('servicesSection'),
+    ingressesSection: document.getElementById('ingressesSection'),
+    endpointsSection: document.getElementById('endpointsSection'),
     namespacesSection: document.getElementById('namespacesSection'),
     podLogsSection: document.getElementById('podLogsSection'),
     podDetailsSection: document.getElementById('podDetailsSection'),
@@ -179,36 +323,20 @@ const elements = {
     podsTableBody: document.getElementById('podsTableBody'),
     deploymentsTableBody: document.getElementById('deploymentsTableBody'),
     servicesTableBody: document.getElementById('servicesTableBody'),
+    ingressesTableBody: document.getElementById('ingressesTableBody'),
+    endpointsTableBody: document.getElementById('endpointsTableBody'),
     namespacesTableBody: document.getElementById('namespacesTableBody'),
 
     // Contadores
     podsCount: document.getElementById('podsCount'),
     deploymentsCount: document.getElementById('deploymentsCount'),
     servicesCount: document.getElementById('servicesCount'),
+    ingressesCount: document.getElementById('ingressesCount'),
+    endpointsCount: document.getElementById('endpointsCount'),
     namespacesCount: document.getElementById('namespacesCount'),
 
-    // Logs
+    // Logs (o restante dos elementos da tela é resolvido pelo LogsScreen)
     backToPodsBtn: document.getElementById('backToPodsBtn'),
-    podLogsTitle: document.getElementById('podLogsTitle'),
-    logsContent: document.getElementById('logsContent'),
-    containerSelect: document.getElementById('containerSelect'),
-    logsOptionsBtn: document.getElementById('logsOptionsBtn'),
-    logsOptionsMenu: document.getElementById('logsOptionsMenu'),
-    lineWrapCheckbox: document.getElementById('lineWrapCheckbox'),
-    logColoringCheckbox: document.getElementById('logColoringCheckbox'),
-    pauseLogsBtn: document.getElementById('pauseLogsBtn'),
-    clearLogsBtn: document.getElementById('clearLogsBtn'),
-    logsCount: document.getElementById('logsCount'),
-    logsRate: document.getElementById('logsRate'),
-    downloadCsvBtn: document.getElementById('downloadCsvBtn'),
-    downloadTextBtn: document.getElementById('downloadTextBtn'),
-    copyCsvBtn: document.getElementById('copyCsvBtn'),
-    copyTextBtn: document.getElementById('copyTextBtn'),
-
-    // Enhanced terminal controls
-    terminalSearchInput: document.getElementById('terminalSearchInput'),
-    searchPrevBtn: document.getElementById('searchPrevBtn'),
-    searchNextBtn: document.getElementById('searchNextBtn'),
 
     // Column selectors
     podsColumnSelectorBtn: document.getElementById('podsColumnSelectorBtn'),
@@ -217,8 +345,6 @@ const elements = {
     deploymentsColumnSelectorModal: document.getElementById('deploymentsColumnSelectorModal'),
     podsColumnCheckboxes: document.getElementById('podsColumnCheckboxes'),
     deploymentsColumnCheckboxes: document.getElementById('deploymentsColumnCheckboxes'),
-    scrollTopBtn: document.getElementById('scrollTopBtn'),
-    scrollBottomBtn: document.getElementById('scrollBottomBtn'),
 
     // Pod Details elements
     podDetailsTitle: document.getElementById('podDetailsTitle'),
@@ -254,6 +380,18 @@ const elements = {
     yamlEditor: document.getElementById('yamlEditor')
 };
 
+// Tela de logs. Recebe por injeção tudo o que precisa do renderer, para não
+// depender de nenhuma variável global deste arquivo.
+const logsScreen = new LogsScreen({
+    ipcRenderer,
+    getConnectionId: () => currentConnectionId,
+    switchSection: (section) => switchSection(section),
+    showError: (message) => showError(message),
+    showToast: (message, type) => showToast(message, type),
+    showLoading: (show) => showLoading(show)
+});
+logsScreen.mount();
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', initializeApp);
 
@@ -262,6 +400,160 @@ elements.connectBtn.addEventListener('click', connectToCluster);
 elements.refreshBtn.addEventListener('click', refreshCurrentSection);
 elements.autoRefreshBtn.addEventListener('click', handleAutoRefreshToggle);
 elements.searchInput.addEventListener('input', filterCurrentSection);
+
+elements.dismissErrorBtn.addEventListener('click', hideError);
+
+// Nomes clicáveis são <span role="button">: sem isto, o teclado alcança mas
+// não aciona
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+
+    const target = e.target.closest('span[role="button"][tabindex]');
+    if (!target) return;
+
+    e.preventDefault();
+    target.click();
+});
+
+// Atalhos globais. Antes só o modal de escala e a busca do terminal
+// respondiam a teclas.
+document.addEventListener('keydown', (e) => {
+    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName);
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        elements.searchInput.focus();
+        elements.searchInput.select();
+        return;
+    }
+
+    if (e.key === 'F5') {
+        e.preventDefault();
+        refreshCurrentSection();
+        return;
+    }
+
+    if (e.key !== 'Escape') return;
+
+    // Escape na busca limpa o termo antes de sair da tela
+    if (e.target === elements.searchInput && elements.searchInput.value) {
+        elements.searchInput.value = '';
+        filterCurrentSection();
+        return;
+    }
+
+    if (typing) return;
+
+    hideError();
+    goBackFromDetailScreen();
+});
+
+// De qual listagem cada tela de detalhe/YAML veio.
+const PARENT_SECTION = {
+    podLogs: 'pods',
+    podDetails: 'pods',
+    podYaml: 'pods',
+    deploymentDetails: 'deployments',
+    deploymentYAML: 'deployments',
+    serviceDetails: 'services',
+    serviceYaml: 'services',
+    ingressYaml: 'ingresses',
+    endpointYaml: 'endpoints'
+};
+
+// Escape volta para a listagem de origem, como o botão de voltar da tela.
+function goBackFromDetailScreen() {
+    const parent = PARENT_SECTION[currentSection];
+    if (!parent) return;
+
+    if (currentSection === 'podLogs') {
+        const wasDeploymentMode = logsScreen.isDeploymentMode();
+        logsScreen.close();
+        switchSection(wasDeploymentMode ? 'deployments' : 'pods');
+        return;
+    }
+
+    switchSection(parent);
+}
+
+// Ordenação: clique ou Enter/Espaço no cabeçalho
+for (const section of Object.keys(SORT_ACCESSORS)) {
+    const table = document.querySelector(`#${section}Section table`);
+    if (!table) continue;
+
+    const thead = table.querySelector('thead');
+
+    thead.addEventListener('click', (e) => {
+        const th = e.target.closest('th[data-column]');
+        if (th) toggleSort(section, th.dataset.column);
+    });
+
+    thead.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+
+        const th = e.target.closest('th[data-column]');
+        if (!th) return;
+
+        e.preventDefault();
+        toggleSort(section, th.dataset.column);
+    });
+}
+
+// Botões de ação das linhas, por delegação: as linhas são recriadas a cada
+// atualização, então ligar listener em cada botão seria refeito toda hora
+elements.podsTableBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.action-btn');
+    if (!btn) return;
+
+    e.stopPropagation();
+    const { podName, podNamespace } = btn.closest('tr').dataset;
+
+    if (btn.dataset.action === 'logs') logsScreen.showPod(podName, podNamespace);
+    else if (btn.dataset.action === 'details') showPodDetails(podName, podNamespace);
+    else if (btn.dataset.action === 'yaml') showPodYaml(podName, podNamespace);
+});
+
+elements.deploymentsTableBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.action-btn');
+    if (!btn) return;
+
+    e.stopPropagation();
+    const { deploymentName, deploymentNamespace } = btn.closest('tr').dataset;
+
+    if (btn.dataset.action === 'logs') logsScreen.showDeployment(deploymentName, deploymentNamespace);
+    else if (btn.dataset.action === 'details') showDeploymentDetails(deploymentName, deploymentNamespace);
+    else if (btn.dataset.action === 'yaml') showDeploymentYAML(deploymentName, deploymentNamespace);
+    else if (btn.dataset.action === 'scale') scaleDeployment(deploymentName, deploymentNamespace);
+});
+
+elements.servicesTableBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.action-btn');
+    if (!btn) return;
+
+    e.stopPropagation();
+    const { serviceName, serviceNamespace } = btn.closest('tr').dataset;
+
+    if (btn.dataset.action === 'details') showServiceDetails(serviceName, serviceNamespace);
+    else if (btn.dataset.action === 'yaml') showServiceYAML(serviceName, serviceNamespace);
+});
+
+elements.ingressesTableBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.action-btn');
+    if (!btn) return;
+
+    e.stopPropagation();
+    const { ingressName, ingressNamespace } = btn.closest('tr').dataset;
+    if (btn.dataset.action === 'yaml') showIngressYAML(ingressName, ingressNamespace);
+});
+
+elements.endpointsTableBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.action-btn');
+    if (!btn) return;
+
+    e.stopPropagation();
+    const { endpointName, endpointNamespace } = btn.closest('tr').dataset;
+    if (btn.dataset.action === 'yaml') showEndpointYAML(endpointName, endpointNamespace);
+});
 elements.reconnectBtn.addEventListener('click', showSetupScreen);
 
 // Seletores de colunas
@@ -333,34 +625,16 @@ elements.namespaceSelect.addEventListener('change', () => {
     }
 });
 
-// Logs event listeners
+// Voltar dos logs para a listagem de origem
 elements.backToPodsBtn.addEventListener('click', () => {
-    stopLogsStreaming();
-    
-    // Verificar se estamos vindo de um deployment ou pod individual
-    const wasDeploymentMode = currentDeploymentName && currentDeploymentPods.length > 0;
-    
-    // Limpar variáveis
-    currentDeploymentName = null;
-    currentDeploymentNamespace = null;
-    currentDeploymentPods = [];
+    const wasDeploymentMode = logsScreen.isDeploymentMode();
+    logsScreen.close();
+
     currentPodName = null;
     currentPodNamespace = null;
-    
-    // Voltar para a seção apropriada
-    // switchSection() já chama loadCurrentSection() automaticamente
-    if (wasDeploymentMode) {
-        switchSection('deployments');
-    } else {
-        switchSection('pods');
-    }
-});
 
-elements.containerSelect.addEventListener('change', async () => {
-    if (currentPodName && currentPodNamespace) {
-        // Recarregar logs com o container selecionado
-        await loadInitialLogs();
-    }
+    // switchSection() já chama loadCurrentSection() automaticamente
+    switchSection(wasDeploymentMode ? 'deployments' : 'pods');
 });
 
 // Pod Details event listeners
@@ -373,7 +647,7 @@ elements.viewPodLogsBtn.addEventListener('click', () => {
         // Navegar para a seção de logs
         switchSection('podLogs');
         // Inicializar os logs do pod
-        showPodLogs(currentPodName, currentPodNamespace);
+        logsScreen.showPod(currentPodName, currentPodNamespace);
     }
 });
 
@@ -413,241 +687,6 @@ elements.downloadYamlBtn.addEventListener('click', () => {
     downloadYaml();
 });
 
-elements.logsOptionsBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const menu = elements.logsOptionsMenu;
-    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-});
-
-elements.pauseLogsBtn.addEventListener('click', () => {
-    if (logsPaused) {
-        resumeLogsStreaming();
-    } else {
-        pauseLogsStreaming();
-    }
-});
-
-elements.clearLogsBtn.addEventListener('click', () => {
-    clearLogs();
-});
-
-elements.lineWrapCheckbox.addEventListener('change', (e) => {
-    logsOptions.lineWrap = e.target.checked;
-    if (e.target.checked) {
-        // Desmarcar scroll horizontal se quebra de linha estiver ativa
-        elements.horizontalScrollCheckbox.checked = false;
-        logsOptions.horizontalScroll = false;
-    }
-    updateLogsDisplay();
-});
-
-elements.logColoringCheckbox.addEventListener('change', (e) => {
-    logsOptions.logColoring = e.target.checked;
-    updateLogsDisplay();
-});
-
-elements.horizontalScrollCheckbox = document.getElementById('horizontalScrollCheckbox');
-elements.horizontalScrollCheckbox.addEventListener('change', (e) => {
-    logsOptions.horizontalScroll = e.target.checked;
-    if (e.target.checked) {
-        // Desmarcar quebra de linha se scroll horizontal estiver ativo
-        elements.lineWrapCheckbox.checked = false;
-        logsOptions.lineWrap = false;
-    }
-    updateLogsDisplay();
-});
-
-document.querySelectorAll('input[name="timestamp"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-        logsOptions.timestamp = e.target.value;
-        updateLogsDisplay();
-    });
-});
-
-elements.downloadCsvBtn.addEventListener('click', () => downloadLogs('csv'));
-elements.downloadTextBtn.addEventListener('click', () => downloadLogs('text'));
-elements.copyCsvBtn.addEventListener('click', () => copyLogs('csv'));
-elements.copyTextBtn.addEventListener('click', () => copyLogs('text'));
-
-// Event listener para mudança de container (reiniciar streaming)
-if (elements.containerSelect) {
-    elements.containerSelect.addEventListener('change', () => {
-        if (logsStreaming) {
-            // Se estamos vendo logs de um deployment
-            if (currentDeploymentName && currentDeploymentPods.length > 0) {
-                startDeploymentLogsStreaming(currentDeploymentName, currentDeploymentNamespace, currentDeploymentPods);
-            }
-            // Se estamos vendo logs de um pod individual
-            else if (currentPodName) {
-                startLogsStreaming();
-            }
-        }
-    });
-}
-
-// Enhanced terminal controls
-elements.terminalSearchInput.addEventListener('input', (e) => {
-    if (logViewer) {
-        logViewer.search(e.target.value);
-    }
-});
-
-elements.terminalSearchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        if (e.shiftKey) {
-            elements.searchPrevBtn.click();
-        } else {
-            elements.searchNextBtn.click();
-        }
-    }
-});
-
-elements.searchPrevBtn.addEventListener('click', () => {
-    if (logViewer) {
-        logViewer.searchPrevious();
-    }
-});
-
-elements.searchNextBtn.addEventListener('click', () => {
-    if (logViewer) {
-        logViewer.searchNext();
-    }
-});
-
-
-elements.scrollTopBtn.addEventListener('click', () => {
-    if (logViewer) {
-        logViewer.scrollToTop();
-    }
-});
-
-elements.scrollBottomBtn.addEventListener('click', () => {
-    if (logViewer) {
-        logViewer.scrollToBottom();
-    }
-});
-
-// Fechar menu de opções ao clicar fora
-document.addEventListener('click', (e) => {
-    if (!elements.logsOptionsBtn.contains(e.target) && !elements.logsOptionsMenu.contains(e.target)) {
-        elements.logsOptionsMenu.style.display = 'none';
-    }
-});
-
-// Listener para ações do menu de contexto de pods
-ipcRenderer.on('context-menu-action', (event, action, data) => {
-    handleContextMenuAction(action, data);
-});
-
-// Listener para ações do menu de contexto de deployments
-ipcRenderer.on('deployment-context-menu-action', (event, action, data) => {
-    handleDeploymentContextMenuAction(action, data);
-});
-
-// Listeners para streaming de logs
-ipcRenderer.on('log-stream-data', (event, { streamId, podName, log }) => {
-    // Para deployments, aceitar qualquer streamId se estivermos em modo deployment
-    const isDeploymentMode = currentDeploymentName && currentDeploymentPods.length > 0;
-    if (!logsStreaming || logsPaused) return;
-    if (!isDeploymentMode && streamId !== currentLogStreamId) return;
-
-    // Remover mensagens de "aguardando" quando os primeiros logs reais chegarem
-    const hadWaitingMessages = logsData.some(log => 
-        log.id === 'waiting-logs' || 
-        log.id === 'waiting-deployment-logs' ||
-        log.id === 'start-deployment-logs' ||
-        log.id === 'streaming-ready'
-    );
-    
-    if (hadWaitingMessages) {
-        logsData = logsData.filter(log => 
-            log.id !== 'waiting-logs' && 
-            log.id !== 'waiting-deployment-logs' &&
-            log.id !== 'start-deployment-logs' &&
-            log.id !== 'streaming-ready'
-        );
-        if (logViewer) {
-            logViewer.clear();
-            // Re-adicionar todos os logs exceto as mensagens de aguardando
-            logsData.forEach(log => logViewer.addLog(log));
-        }
-    }
-
-    const lines = log.split('\n').filter(line => line.trim() !== '');
-
-    lines.forEach(line => {
-        // Tenta extrair timestamp do Kubernetes
-        const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s/);
-        let timestamp;
-        let message;
-        let hasRealTimestamp = false;
-
-        if (tsMatch) {
-            timestamp = tsMatch[1];
-            message = line.substring(tsMatch[0].length);
-            hasRealTimestamp = true;
-        } else {
-            timestamp = new Date().toISOString();
-            message = line;
-        }
-
-        const logEntry = {
-            id: `stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            timestamp: timestamp,
-            hasRealTimestamp: hasRealTimestamp,
-            isApproximateTimestamp: !hasRealTimestamp,
-            level: 'info',
-            message: message,
-            raw: line,
-            podName: podName || currentPodName  // Usar podName do backend se disponível, senão currentPodName
-        };
-
-        if (message.toLowerCase().includes('error') || message.toLowerCase().includes('fatal')) {
-            logEntry.level = 'error';
-        } else if (message.toLowerCase().includes('warn') || message.toLowerCase().includes('warning')) {
-            logEntry.level = 'warning';
-        } else if (message.toLowerCase().includes('debug')) {
-            logEntry.level = 'debug';
-        }
-
-        // Adicionar log aos dados e ao LogViewer
-        addLogEntry(logEntry);
-    });
-
-    updateLogsStats();
-});
-
-ipcRenderer.on('log-stream-error', (event, { streamId, message }) => {
-    const isDeploymentMode = currentDeploymentName && currentDeploymentPods.length > 0;
-    if (!isDeploymentMode && streamId !== currentLogStreamId) return;
-    console.error(`Log stream error for ${streamId}:`, message);
-    const errorEntry = {
-        id: 'stream-error',
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        message: `STREAM ERROR: ${message}`,
-        raw: `STREAM ERROR: ${message}`
-    };
-    addLogEntry(errorEntry);
-    stopLogsStreaming(); // Stop on error
-});
-
-ipcRenderer.on('log-stream-end', (event, { streamId }) => {
-    const isDeploymentMode = currentDeploymentName && currentDeploymentPods.length > 0;
-    if (!isDeploymentMode && streamId !== currentLogStreamId) return;
-    const endEntry = {
-        id: 'stream-end',
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Log stream finished.',
-        raw: 'Log stream finished.'
-    };
-    addLogEntry(endEntry);
-
-    currentLogStreamId = null;
-    logsStreaming = false;
-});
-
 function initializeSections() {
     // Garantir que todas as seções estejam escondidas inicialmente
     document.querySelectorAll('.content-section').forEach(section => {
@@ -673,21 +712,8 @@ function initializeSections() {
         }
     });
 
-    // Garantir que não há LogViewer ativo inicialmente
-    if (logViewer) {
-        try {
-            logViewer.destroy();
-        } catch (error) {
-            console.warn('Erro ao destruir LogViewer na inicialização:', error);
-        }
-        logViewer = null;
-    }
-
-    // Limpar conteúdo de logs se houver
-    const logsContent = document.getElementById('logsContent');
-    if (logsContent) {
-        logsContent.innerHTML = '';
-    }
+    // Garantir que não há terminal de logs de uma sessão anterior
+    logsScreen.destroyViewer();
 }
 
 async function initializeApp() {
@@ -808,11 +834,15 @@ async function connectToCluster() {
     }
 }
 
-async function loadNamespaces() {
+async function loadNamespaces({ fromCache = false } = {}) {
     try {
-        const namespaces = await ipcRenderer.invoke('get-namespaces', currentConnectionId);
+        const namespaces = fromCache && sectionCache.namespaces
+            ? sectionCache.namespaces
+            : cacheSection('namespaces', await ipcRenderer.invoke('get-namespaces', currentConnectionId));
 
-        // Limpar e adicionar namespaces ao dropdown
+        // Limpar e adicionar namespaces ao dropdown. O select lista sempre
+        // todos: quem filtra a tabela é a busca, não o seletor
+        const selected = elements.namespaceSelect.value;
         elements.namespaceSelect.innerHTML = '<option value="all">Todos os namespaces</option>';
 
         namespaces.forEach(ns => {
@@ -821,6 +851,8 @@ async function loadNamespaces() {
             option.textContent = ns.name;
             elements.namespaceSelect.appendChild(option);
         });
+
+        if (selected) elements.namespaceSelect.value = selected;
 
         // Carregar preferência de namespace salva para este cluster
         if (currentContext) {
@@ -839,11 +871,21 @@ async function loadNamespaces() {
 
         // Populate namespaces table if we're in the namespaces section
         if (currentSection === 'namespaces') {
-            populateNamespacesTable(namespaces);
-        }
+            // A busca vale aqui também: o placeholder já prometia "Buscar
+            // namespaces...", mas nada filtrava
+            const searchTerm = elements.searchInput.value.toLowerCase().trim();
+            const filtered = searchTerm
+                ? namespaces.filter(ns =>
+                    ns.name.toLowerCase().includes(searchTerm) ||
+                    ns.status.toLowerCase().includes(searchTerm))
+                : namespaces;
 
-        // Atualizar contador de namespaces
-        elements.namespacesCount.textContent = `${namespaces.length} namespaces`;
+            updateSortIndicators('namespaces');
+            populateNamespacesTable(sortItems('namespaces', filtered));
+            setSectionCount('namespacesCount', `${filtered.length} namespaces`);
+        } else {
+            elements.namespacesCount.textContent = `${namespaces.length} namespaces`;
+        }
 
     } catch (error) {
         console.error('Erro ao carregar namespaces:', error);
@@ -880,10 +922,12 @@ function populateNamespacesTable(namespaces) {
     });
 }
 
-async function loadDeployments() {
+async function loadDeployments({ fromCache = false } = {}) {
     try {
         const namespace = elements.namespaceSelect.value;
-        const deployments = await ipcRenderer.invoke('get-deployments', currentConnectionId, namespace);
+        const deployments = fromCache && sectionCache.deployments
+            ? sectionCache.deployments
+            : cacheSection('deployments', await ipcRenderer.invoke('get-deployments', currentConnectionId, namespace));
 
         // Filtrar deployments se necessário
         const searchTerm = elements.searchInput.value.toLowerCase().trim();
@@ -923,7 +967,9 @@ async function loadDeployments() {
         }
 
         // Adicionar deployments à tabela
-        filteredDeployments.forEach(deployment => {
+        updateSortIndicators('deployments');
+
+        sortItems('deployments', filteredDeployments).forEach(deployment => {
             const row = document.createElement('tr');
             row.dataset.deploymentName = deployment.name;
             row.dataset.deploymentNamespace = deployment.namespace;
@@ -951,7 +997,7 @@ async function loadDeployments() {
             
             // Definir a ordem das colunas conforme definido em DEPLOYMENTS_COLUMNS
             const columnOrder = [
-                { key: 'name', content: `<td class="deployment-name" data-deployment-name="${deployment.name}" data-deployment-namespace="${deployment.namespace}"><span class="deployment-name-link">${deployment.name}</span></td>` },
+                { key: 'name', content: `<td class="deployment-name" data-deployment-name="${deployment.name}" data-deployment-namespace="${deployment.namespace}"><span class="deployment-name-link" role="button" tabindex="0">${deployment.name}</span></td>` },
                 { key: 'namespace', content: `<td class="deployment-namespace">${namespaceDisplay}</td>` },
                 { key: 'status', content: `<td><span class="status-${statusClass}">${statusText}</span></td>` },
                 { key: 'ready', content: `<td><span class="${deployment.readyReplicas === deployment.replicas ? 'ready-ready' : 'ready-not-ready'}">${deployment.ready}</span></td>` },
@@ -968,19 +1014,15 @@ async function loadDeployments() {
                 }
             });
 
+            cells.push(rowActionsCell(DEPLOYMENT_ROW_ACTIONS));
+
             row.innerHTML = cells.join('');
-            
-            // Adicionar event listeners
-            const deploymentNameCell = row.querySelector('.deployment-name');
-            if (deploymentNameCell) {
-                // Context menu para nome do deployment
-                deploymentNameCell.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    const deploymentName = deploymentNameCell.dataset.deploymentName;
-                    const namespace = deploymentNameCell.dataset.deploymentNamespace;
-                    showDeploymentContextMenu(e, deploymentName, namespace);
-                });
-            }
+
+            // Menu de contexto na linha inteira, não só na célula do nome
+            row.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showDeploymentContextMenu(e, row.dataset.deploymentName, row.dataset.deploymentNamespace);
+            });
             
             // Click no nome do deployment para abrir detalhes
             const deploymentNameLink = row.querySelector('.deployment-name-link');
@@ -994,38 +1036,6 @@ async function loadDeployments() {
             }
             
             elements.deploymentsTableBody.appendChild(row);
-        });
-
-        // Adicionar event listeners aos botões
-        elements.deploymentsTableBody.querySelectorAll('.logs-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const row = btn.closest('tr');
-                const name = row.dataset.deploymentName;
-                const namespace = row.dataset.deploymentNamespace;
-                console.log(`Ver logs do deployment: ${name} no namespace: ${namespace}`);
-                showToast(`Funcionalidade de logs em desenvolvimento`, 'info');
-            });
-        });
-
-        elements.deploymentsTableBody.querySelectorAll('.details-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const row = btn.closest('tr');
-                const name = row.dataset.deploymentName;
-                const namespace = row.dataset.deploymentNamespace;
-                showToast(`Funcionalidade de detalhes em desenvolvimento`, 'info');
-            });
-        });
-
-        elements.deploymentsTableBody.querySelectorAll('.yaml-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const row = btn.closest('tr');
-                const name = row.dataset.deploymentName;
-                const namespace = row.dataset.deploymentNamespace;
-                await showDeploymentYAML(name, namespace);
-            });
         });
 
         // Atualizar contador
@@ -1042,10 +1052,12 @@ async function loadDeployments() {
     }
 }
 
-async function loadServices() {
+async function loadServices({ fromCache = false } = {}) {
     try {
         const namespace = elements.namespaceSelect.value;
-        const services = await ipcRenderer.invoke('get-services', currentConnectionId, namespace);
+        const services = fromCache && sectionCache.services
+            ? sectionCache.services
+            : cacheSection('services', await ipcRenderer.invoke('get-services', currentConnectionId, namespace));
 
         // Filtrar services se necessário
         const searchTerm = elements.searchInput.value.toLowerCase().trim();
@@ -1086,13 +1098,15 @@ async function loadServices() {
         }
 
         // Adicionar services à tabela
-        for (const service of filteredServices) {
+        updateSortIndicators('services');
+
+        for (const service of sortItems('services', filteredServices)) {
             const row = document.createElement('tr');
             row.dataset.serviceName = service.metadata.name;
             row.dataset.serviceNamespace = service.metadata.namespace;
 
             // Calcular idade
-            const age = calculateAge(service.metadata.creationTimestamp);
+            const age = formatAge(service.metadata.creationTimestamp);
             
             // Formatar portas
             const ports = service.spec.ports ? service.spec.ports.map(port => 
@@ -1112,13 +1126,17 @@ async function loadServices() {
                     : '-');
 
             row.innerHTML = `
-                <td><span class="service-name-link" data-service-name="${service.metadata.name}" data-service-namespace="${service.metadata.namespace}">${service.metadata.name}</span></td>
+                <td><span class="service-name-link" role="button" tabindex="0" data-service-name="${service.metadata.name}" data-service-namespace="${service.metadata.namespace}">${service.metadata.name}</span></td>
                 <td>${namespaceDisplay}</td>
                 <td>${service.spec.type}</td>
                 <td>${service.spec.clusterIP || '-'}</td>
                 <td>${externalIPs}</td>
                 <td>${ports}</td>
                 <td>${age}</td>
+                ${rowActionsCell([
+                    { action: 'details', icon: 'bi-eye', label: 'Ver detalhes' },
+                    { action: 'yaml', icon: 'bi-file-code', label: 'Ver YAML' }
+                ])}
             `;
             
             // Adicionar evento de clique direito na linha para abrir menu de contexto
@@ -1150,63 +1168,304 @@ async function loadServices() {
     }
 }
 
-function calculateAge(creationTimestamp) {
-    if (!creationTimestamp) return '-';
-    
-    const now = new Date();
-    const created = new Date(creationTimestamp);
-    const diffMs = now - created;
-    
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
-    
-    if (diffDays > 0) return `${diffDays}d`;
-    if (diffHours > 0) return `${diffHours}h`;
-    if (diffMinutes > 0) return `${diffMinutes}m`;
-    return '<1m';
+
+// Escreve o total no breadcrumb e no contador oculto da seção, que é a fonte
+// lida por updateBreadcrumbCount ao voltar para ela.
+function setSectionCount(counterKey, text) {
+    elements.currentSectionCount.textContent = text;
+    if (elements[counterKey]) elements[counterKey].textContent = text;
 }
 
-function showServiceContextMenu(event, serviceName, namespace) {
-    event.stopPropagation();
-    
-    // Remove menu anterior se existir
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-        existingMenu.remove();
+// Linha de "nenhum resultado" para as tabelas de listagem.
+function appendEmptyRow(tbody, { colspan, icon, message }) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td colspan="${colspan}" class="no-data">
+            <div class="no-data-message">
+                <span class="no-data-icon">${icon}</span>
+                <p>${message}</p>
+            </div>
+        </td>
+    `;
+    tbody.appendChild(row);
+}
+
+// Mensagem de lista vazia levando em conta busca e namespace selecionados.
+function emptyListMessage(kind, searchTerm) {
+    if (searchTerm) return `Nenhum ${kind} encontrado com o termo de busca`;
+
+    return elements.namespaceSelect.value === 'all'
+        ? `Nenhum ${kind} encontrado em nenhum namespace`
+        : `Nenhum ${kind} encontrado no namespace "${elements.namespaceSelect.value}"`;
+}
+
+// Namespace como badge quando a lista mistura vários namespaces.
+function namespaceCell(namespace) {
+    return elements.namespaceSelect.value === 'all'
+        ? `<span class="namespace-badge">${escapeHtml(namespace)}</span>`
+        : escapeHtml(namespace);
+}
+
+async function loadIngresses({ fromCache = false } = {}) {
+    try {
+        const namespace = elements.namespaceSelect.value;
+        const ingresses = fromCache && sectionCache.ingresses
+            ? sectionCache.ingresses
+            : cacheSection('ingresses', await ipcRenderer.invoke('get-ingresses', currentConnectionId, namespace));
+
+        const searchTerm = elements.searchInput.value.toLowerCase().trim();
+        const filtered = searchTerm
+            ? ingresses.filter(ingress =>
+                ingress.name.toLowerCase().includes(searchTerm) ||
+                ingress.namespace.toLowerCase().includes(searchTerm) ||
+                ingress.className.toLowerCase().includes(searchTerm) ||
+                ingress.hosts.some(host => host.toLowerCase().includes(searchTerm)))
+            : ingresses;
+
+        elements.ingressesTableBody.innerHTML = '';
+
+        if (filtered.length === 0) {
+            appendEmptyRow(elements.ingressesTableBody, {
+                colspan: 7,
+                icon: '🌐',
+                message: emptyListMessage('ingress', searchTerm)
+            });
+            setSectionCount('ingressesCount', '0 ingresses');
+            return;
+        }
+
+        updateSortIndicators('ingresses');
+
+        for (const ingress of sortItems('ingresses', filtered)) {
+            const row = document.createElement('tr');
+            row.dataset.ingressName = ingress.name;
+            row.dataset.ingressNamespace = ingress.namespace;
+
+            // Address vazio significa ingress ainda não programado pelo controller
+            const address = ingress.addresses.length > 0 ? ingress.addresses.join(', ') : '-';
+
+            row.innerHTML = `
+                <td><span class="resource-name-link" role="button" tabindex="0">${escapeHtml(ingress.name)}</span></td>
+                <td>${namespaceCell(ingress.namespace)}</td>
+                <td>${escapeHtml(ingress.className)}</td>
+                <td>${escapeHtml(ingress.hosts.join(', ') || '-')}</td>
+                <td>${escapeHtml(address)}</td>
+                <td>${escapeHtml(ingress.ports.join(', '))}</td>
+                <td>${ingress.age}</td>
+                ${rowActionsCell([{ action: 'yaml', icon: 'bi-file-code', label: 'Ver YAML' }])}
+            `;
+
+            row.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showContextMenu(e, [
+                    { icon: 'bi-file-code', label: 'Ver YAML', action: () => showIngressYAML(ingress.name, ingress.namespace) }
+                ]);
+            });
+
+            row.querySelector('.resource-name-link').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showIngressYAML(ingress.name, ingress.namespace);
+            });
+
+            elements.ingressesTableBody.appendChild(row);
+        }
+
+        setSectionCount('ingressesCount', `${filtered.length} ingresses`);
+    } catch (error) {
+        console.error('Erro ao carregar ingresses:', error);
+        throw error;
     }
+}
+
+async function loadEndpoints({ fromCache = false } = {}) {
+    try {
+        const namespace = elements.namespaceSelect.value;
+        const endpoints = fromCache && sectionCache.endpoints
+            ? sectionCache.endpoints
+            : cacheSection('endpoints', await ipcRenderer.invoke('get-endpoints', currentConnectionId, namespace));
+
+        const searchTerm = elements.searchInput.value.toLowerCase().trim();
+        const filtered = searchTerm
+            ? endpoints.filter(endpoint =>
+                endpoint.name.toLowerCase().includes(searchTerm) ||
+                endpoint.namespace.toLowerCase().includes(searchTerm) ||
+                endpoint.addresses.some(address => address.toLowerCase().includes(searchTerm)))
+            : endpoints;
+
+        elements.endpointsTableBody.innerHTML = '';
+
+        if (filtered.length === 0) {
+            appendEmptyRow(elements.endpointsTableBody, {
+                colspan: 4,
+                icon: '🔌',
+                message: emptyListMessage('endpoint', searchTerm)
+            });
+            setSectionCount('endpointsCount', '0 endpoints');
+            return;
+        }
+
+        updateSortIndicators('endpoints');
+
+        for (const endpoint of sortItems('endpoints', filtered)) {
+            const row = document.createElement('tr');
+            row.dataset.endpointName = endpoint.name;
+            row.dataset.endpointNamespace = endpoint.namespace;
+
+            // Sem endereços prontos o kubectl mostra <none>; se existirem pods
+            // não prontos, dizemos quantos são para diferenciar dos sem backend
+            const addresses = endpoint.addresses.length > 0
+                ? endpoint.addresses.join(', ')
+                : (endpoint.notReadyCount > 0
+                    ? `<none> (${endpoint.notReadyCount} não pronto(s))`
+                    : '<none>');
+
+            row.innerHTML = `
+                <td><span class="resource-name-link" role="button" tabindex="0">${escapeHtml(endpoint.name)}</span></td>
+                <td>${namespaceCell(endpoint.namespace)}</td>
+                <td class="endpoint-addresses">${escapeHtml(addresses)}</td>
+                <td>${endpoint.age}</td>
+                ${rowActionsCell([{ action: 'yaml', icon: 'bi-file-code', label: 'Ver YAML' }])}
+            `;
+
+            row.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showContextMenu(e, [
+                    { icon: 'bi-file-code', label: 'Ver YAML', action: () => showEndpointYAML(endpoint.name, endpoint.namespace) }
+                ]);
+            });
+
+            row.querySelector('.resource-name-link').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showEndpointYAML(endpoint.name, endpoint.namespace);
+            });
+
+            elements.endpointsTableBody.appendChild(row);
+        }
+
+        setSectionCount('endpointsCount', `${filtered.length} endpoints`);
+    } catch (error) {
+        console.error('Erro ao carregar endpoints:', error);
+        throw error;
+    }
+}
+
+async function showIngressYAML(name, namespace) {
+    await showNetworkingYAML({
+        channel: 'get-ingress-yaml',
+        section: 'ingressYaml',
+        titleId: 'ingressYamlTitle',
+        titleLabel: 'Ingress',
+        containerId: 'ingressYamlContent',
+        buttons: {
+            backBtnId: 'backToIngressesFromYamlBtn',
+            copyBtnId: 'copyIngressYamlBtn',
+            downloadBtnId: 'downloadIngressYamlBtn',
+            backSection: 'ingresses'
+        },
+        name,
+        namespace
+    });
+}
+
+async function showEndpointYAML(name, namespace) {
+    await showNetworkingYAML({
+        channel: 'get-endpoint-yaml',
+        section: 'endpointYaml',
+        titleId: 'endpointYamlTitle',
+        titleLabel: 'Endpoint',
+        containerId: 'endpointYamlContent',
+        buttons: {
+            backBtnId: 'backToEndpointsFromYamlBtn',
+            copyBtnId: 'copyEndpointYamlBtn',
+            downloadBtnId: 'downloadEndpointYamlBtn',
+            backSection: 'endpoints'
+        },
+        name,
+        namespace
+    });
+}
+
+// Busca o YAML de um recurso de rede e o exibe na sua tela dedicada.
+async function showNetworkingYAML({ channel, section, titleId, titleLabel, containerId, buttons, name, namespace }) {
+    try {
+        showLoading(true);
+
+        const yamlContent = await ipcRenderer.invoke(channel, currentConnectionId, name, namespace);
+
+        if (!yamlContent) {
+            showToast(`Não foi possível obter o YAML do ${titleLabel.toLowerCase()}`, 'error');
+            showLoading(false);
+            return;
+        }
+
+        const title = document.getElementById(titleId);
+        if (title) title.textContent = `YAML do ${titleLabel}: ${name}`;
+
+        switchSection(section);
+
+        renderYamlEditor(containerId, yamlContent);
+
+        setupYAMLButtons({ ...buttons, name, namespace, yaml: yamlContent });
+
+        showLoading(false);
+    } catch (error) {
+        console.error(`Erro ao exibir YAML do ${titleLabel.toLowerCase()}:`, error);
+        showError(`Erro ao exibir YAML: ${error.message}`);
+        showLoading(false);
+    }
+}
+
+
+// Abre um menu de contexto na posição do clique. Cada item é
+// { icon, label, action }; action roda ao clicar, com o menu já fechado.
+function showContextMenu(event, items) {
+    event.stopPropagation();
+
+    document.querySelector('.context-menu')?.remove();
 
     const menu = document.createElement('div');
     menu.className = 'context-menu';
     menu.style.position = 'fixed';
-    menu.style.left = event.pageX + 'px';
-    menu.style.top = event.pageY + 'px';
+    menu.style.left = `${event.pageX}px`;
+    menu.style.top = `${event.pageY}px`;
     menu.style.zIndex = '1000';
 
-    menu.innerHTML = `
-        <div class="context-menu-item" onclick="showServiceDetails('${serviceName}', '${namespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-eye"></i>
-            Ver Detalhes
-        </div>
-        <div class="context-menu-item" onclick="showServiceYAML('${serviceName}', '${namespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-code"></i>
-            Ver YAML
-        </div>
-    `;
+    const close = () => {
+        menu.remove();
+        document.removeEventListener('click', onDocumentClick);
+    };
+
+    const onDocumentClick = (e) => {
+        if (!menu.contains(e.target)) close();
+    };
+
+    for (const { icon, label, action } of items) {
+        const item = document.createElement('div');
+        item.className = 'context-menu-item';
+
+        const iconEl = document.createElement('i');
+        iconEl.className = `bi ${icon}`;
+        item.append(iconEl, ` ${label}`);
+
+        item.addEventListener('click', () => {
+            close();
+            action();
+        });
+
+        menu.appendChild(item);
+    }
 
     document.body.appendChild(menu);
 
-    // Remove menu ao clicar fora
-    const removeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener('click', removeMenu);
-        }
-    };
+    // O clique que abriu o menu ainda está propagando; adiar evita fechá-lo na hora
+    setTimeout(() => document.addEventListener('click', onDocumentClick), 100);
+}
 
-    setTimeout(() => {
-        document.addEventListener('click', removeMenu);
-    }, 100);
+function showServiceContextMenu(event, serviceName, namespace) {
+    showContextMenu(event, [
+        { icon: 'bi-eye', label: 'Ver Detalhes', action: () => showServiceDetails(serviceName, namespace) },
+        { icon: 'bi-file-code', label: 'Ver YAML', action: () => showServiceYAML(serviceName, namespace) }
+    ]);
 }
 
 async function showServiceDetails(serviceName, namespace) {
@@ -1260,13 +1519,19 @@ async function showServiceYAML(serviceName, namespace) {
         
         // Mostrar seção de YAML
         switchSection('serviceYaml');
-        
-        // Inicializar editor YAML
-        initializeServiceYamlEditor(yamlContent);
-        
-        // Configurar botões
-        setupServiceYAMLButtons(serviceName, namespace, yamlContent);
-        
+
+        renderYamlEditor('serviceYamlContent', yamlContent);
+
+        setupYAMLButtons({
+            backBtnId: 'backToServicesFromYamlBtn',
+            copyBtnId: 'copyServiceYamlBtn',
+            downloadBtnId: 'downloadServiceYamlBtn',
+            backSection: 'services',
+            name: serviceName,
+            namespace,
+            yaml: yamlContent
+        });
+
         showLoading(false);
     } catch (error) {
         console.error('Erro ao exibir YAML do service:', error);
@@ -1276,84 +1541,64 @@ async function showServiceYAML(serviceName, namespace) {
 }
 
 
-function initializeServiceYamlEditor(yamlContent) {
-    const editorContainer = document.getElementById('serviceYamlContent');
+// Renderiza YAML com realce de sintaxe no container indicado.
+function renderYamlEditor(containerId, yamlContent) {
+    const editorContainer = document.getElementById(containerId);
     if (!editorContainer) {
-        console.error('Container do editor YAML não encontrado');
+        console.error(`Container do editor YAML não encontrado: ${containerId}`);
         return;
     }
-    
-    // Limpar container
+
     editorContainer.innerHTML = '';
 
-    try {
-        const pre = document.createElement('pre');
-        pre.className = 'line-numbers';
-        const code = document.createElement('code');
-        code.className = 'language-yaml';
-        code.textContent = yamlContent;
-        pre.appendChild(code);
-        editorContainer.appendChild(pre);
-        if (typeof Prism !== 'undefined') {
-            Prism.highlightElement(code);
-        }
-    } catch (error) {
-        console.error('Erro ao criar editor YAML:', error);
-        editorContainer.innerHTML = `<pre class="line-numbers"><code class="language-yaml">${yamlContent}</code></pre>`;
+    const pre = document.createElement('pre');
+    pre.className = 'line-numbers';
+    const code = document.createElement('code');
+    code.className = 'language-yaml';
+    code.textContent = yamlContent;
+    pre.appendChild(code);
+    editorContainer.appendChild(pre);
+
+    if (typeof Prism !== 'undefined') {
+        Prism.highlightElement(code);
     }
 }
 
-function setupServiceYAMLButtons(name, namespace, yaml) {
-    // Botão voltar
-    const backBtn = document.getElementById('backToServicesFromYamlBtn');
-    if (backBtn) {
-        backBtn.replaceWith(backBtn.cloneNode(true));
-        const newBackBtn = document.getElementById('backToServicesFromYamlBtn');
-        newBackBtn.addEventListener('click', () => {
-            switchSection('services');
-            loadCurrentSection();
-        });
-    }
-    
-    // Botão copiar
-    const copyBtn = document.getElementById('copyServiceYamlBtn');
-    if (copyBtn) {
-        copyBtn.replaceWith(copyBtn.cloneNode(true));
-        const newCopyBtn = document.getElementById('copyServiceYamlBtn');
-        newCopyBtn.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(yaml);
-                showToast('YAML copiado para a área de transferência!', 'success');
-            } catch (error) {
-                console.error('Erro ao copiar YAML:', error);
-                showToast('Erro ao copiar YAML', 'error');
-            }
-        });
-    }
-    
-    // Botão download
-    const downloadBtn = document.getElementById('downloadServiceYamlBtn');
-    if (downloadBtn) {
-        downloadBtn.replaceWith(downloadBtn.cloneNode(true));
-        const newDownloadBtn = document.getElementById('downloadServiceYamlBtn');
-        newDownloadBtn.addEventListener('click', () => {
-            try {
-                const blob = new Blob([yaml], { type: 'text/yaml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${name}-${namespace}.yaml`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                showToast('YAML baixado com sucesso!', 'success');
-            } catch (error) {
-                console.error('Erro ao baixar YAML:', error);
-                showToast('Erro ao baixar YAML', 'error');
-            }
-        });
-    }
+// Devolve o botão sem os listeners de aberturas anteriores da tela.
+function resetButton(id) {
+    const btn = document.getElementById(id);
+    if (!btn) return null;
+
+    btn.replaceWith(btn.cloneNode(true));
+    return document.getElementById(id);
+}
+
+// Liga os botões voltar/copiar/baixar de uma tela de YAML.
+function setupYAMLButtons({ backBtnId, copyBtnId, downloadBtnId, backSection, name, namespace, yaml }) {
+    resetButton(backBtnId)?.addEventListener('click', () => {
+        switchSection(backSection);
+        loadCurrentSection();
+    });
+
+    resetButton(copyBtnId)?.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(yaml);
+            showToast('YAML copiado para a área de transferência!', 'success');
+        } catch (error) {
+            console.error('Erro ao copiar YAML:', error);
+            showToast('Erro ao copiar YAML', 'error');
+        }
+    });
+
+    resetButton(downloadBtnId)?.addEventListener('click', () => {
+        try {
+            downloadBlob(yaml, `${name}-${namespace}.yaml`, 'text/yaml');
+            showToast('YAML baixado com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao baixar YAML:', error);
+            showToast('Erro ao baixar YAML', 'error');
+        }
+    });
 }
 
 async function showDeploymentYAML(name, namespace) {
@@ -1379,97 +1624,23 @@ async function showDeploymentYAML(name, namespace) {
         
         // Mudar para a seção de YAML
         switchSection('deploymentYAML');
-        
-        // Inicializar editor YAML
-        initializeDeploymentYamlEditor(yaml);
-        
-        // Configurar botões
-        setupDeploymentYAMLButtons(name, namespace, yaml);
-        
+
+        renderYamlEditor('deploymentYamlEditor', yaml);
+
+        setupYAMLButtons({
+            backBtnId: 'backToDeploymentDetailsBtn',
+            copyBtnId: 'copyDeploymentYamlBtn',
+            downloadBtnId: 'downloadDeploymentYamlBtn',
+            backSection: 'deployments',
+            name,
+            namespace,
+            yaml
+        });
+
         showLoading(false);
     } catch (error) {
         console.error('Erro ao exibir YAML do deployment:', error);
         showError(`Erro ao exibir YAML: ${error.message}`);
-    }
-}
-
-function initializeDeploymentYamlEditor(yamlContent) {
-    const editorContainer = document.getElementById('deploymentYamlEditor');
-    if (!editorContainer) {
-        console.error('Container do editor YAML não encontrado');
-        return;
-    }
-    
-    // Limpar container
-    editorContainer.innerHTML = '';
-
-    try {
-        const pre = document.createElement('pre');
-        pre.className = 'line-numbers';
-        const code = document.createElement('code');
-        code.className = 'language-yaml';
-        code.textContent = yamlContent;
-        pre.appendChild(code);
-        editorContainer.appendChild(pre);
-        if (typeof Prism !== 'undefined') {
-            Prism.highlightElement(code);
-        }
-    } catch (error) {
-        console.error('Erro ao criar editor YAML:', error);
-        editorContainer.innerHTML = `<pre class="line-numbers"><code class="language-yaml">${yamlContent}</code></pre>`;
-    }
-}
-
-function setupDeploymentYAMLButtons(name, namespace, yaml) {
-    // Botão voltar
-    const backBtn = document.getElementById('backToDeploymentDetailsBtn');
-    if (backBtn) {
-        backBtn.replaceWith(backBtn.cloneNode(true));
-        const newBackBtn = document.getElementById('backToDeploymentDetailsBtn');
-        newBackBtn.addEventListener('click', () => {
-            switchSection('deployments');
-            loadCurrentSection();
-        });
-    }
-    
-    // Botão copiar
-    const copyBtn = document.getElementById('copyDeploymentYamlBtn');
-    if (copyBtn) {
-        copyBtn.replaceWith(copyBtn.cloneNode(true));
-        const newCopyBtn = document.getElementById('copyDeploymentYamlBtn');
-        newCopyBtn.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(yaml);
-                showToast('YAML copiado para a área de transferência!', 'success');
-            } catch (error) {
-                console.error('Erro ao copiar YAML:', error);
-                showToast('Erro ao copiar YAML', 'error');
-            }
-        });
-    }
-    
-    // Botão download
-    const downloadBtn = document.getElementById('downloadDeploymentYamlBtn');
-    if (downloadBtn) {
-        downloadBtn.replaceWith(downloadBtn.cloneNode(true));
-        const newDownloadBtn = document.getElementById('downloadDeploymentYamlBtn');
-        newDownloadBtn.addEventListener('click', () => {
-            try {
-                const blob = new Blob([yaml], { type: 'text/yaml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${name}-${namespace}.yaml`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                showToast('YAML baixado com sucesso!', 'success');
-            } catch (error) {
-                console.error('Erro ao baixar YAML:', error);
-                showToast('Erro ao baixar YAML', 'error');
-            }
-        });
     }
 }
 
@@ -1491,6 +1662,12 @@ async function loadCurrentSection() {
                 break;
             case 'services':
                 await loadServices();
+                break;
+            case 'ingresses':
+                await loadIngresses();
+                break;
+            case 'endpoints':
+                await loadEndpoints();
                 break;
             case 'namespaces':
                 await loadNamespaces();
@@ -1668,8 +1845,8 @@ function updatePodRow(row, pod) {
     const columnOrder = [
         { key: 'name', update: (cell) => { cell.innerHTML = `<a href="#" class="pod-name-link" title="Ver detalhes">${pod.name}</a>`; } },
         { key: 'namespace', update: (cell) => { cell.innerHTML = namespaceDisplay; } },
-        { key: 'status', update: (cell) => { cell.innerHTML = `<span class="status-${pod.status.toLowerCase()}">${pod.status}</span>`; } },
-        { key: 'ready', update: (cell) => { cell.innerHTML = `<span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span>`; } },
+        { key: 'status', update: (cell) => { cell.innerHTML = podStatusCell(pod); } },
+        { key: 'ready', update: (cell) => { cell.innerHTML = podReadyCell(pod); } },
         { key: 'restarts', update: (cell) => { cell.textContent = pod.restarts; } },
         { key: 'age', update: (cell) => { cell.textContent = pod.age; } },
         { key: 'cpuUsage', update: (cell) => { cell.innerHTML = cpuBar; } },
@@ -1709,8 +1886,45 @@ function updatePodRow(row, pod) {
 }
 
 // Função para criar uma nova linha
+// Célula de ações da linha. As ações antes existiam só no menu de botão
+// direito, sem nenhuma pista visual de que estavam lá.
+function rowActionsCell(actions) {
+    const buttons = actions.map(({ action, icon, label }) =>
+        `<button type="button" class="action-btn" data-action="${action}" title="${label}" aria-label="${label}"><i class="bi ${icon}"></i></button>`
+    ).join('');
+
+    return `<td class="row-actions">${buttons}</td>`;
+}
+
+const POD_ROW_ACTIONS = [
+    { action: 'logs', icon: 'bi-file-text', label: 'Ver logs' },
+    { action: 'details', icon: 'bi-eye', label: 'Ver detalhes' },
+    { action: 'yaml', icon: 'bi-file-code', label: 'Ver YAML' }
+];
+
+const DEPLOYMENT_ROW_ACTIONS = [
+    { action: 'logs', icon: 'bi-file-text', label: 'Ver logs' },
+    { action: 'details', icon: 'bi-eye', label: 'Ver detalhes' },
+    { action: 'yaml', icon: 'bi-file-code', label: 'Ver YAML' },
+    { action: 'scale', icon: 'bi-arrows-fullscreen', label: 'Escalar' }
+];
+
+// Célula de status: a cor vem do motivo (CrashLoopBackOff, Terminating...),
+// não da fase.
+function podStatusCell(pod) {
+    return `<span class="status-${podStatusClass(pod.status)}" title="${escapeHtml(pod.status)}">${escapeHtml(pod.status)}</span>`;
+}
+
+// Célula de ready: vermelho enquanto faltar algum container pronto.
+function podReadyCell(pod) {
+    const allReady = pod.totalContainers > 0 && pod.readyCount === pod.totalContainers;
+    return `<span class="ready-${allReady ? 'ready' : 'not-ready'}">${pod.ready}</span>`;
+}
+
 function createPodRow(pod) {
     const row = document.createElement('tr');
+    row.dataset.podName = pod.name;
+    row.dataset.podNamespace = pod.namespace;
 
     // Destacar namespace quando visualizando todos os namespaces
     const namespaceDisplay = elements.namespaceSelect.value === 'all'
@@ -1741,8 +1955,8 @@ function createPodRow(pod) {
     const columnOrder = [
         { key: 'name', content: `<td class="pod-name" data-pod-name="${pod.name}" data-pod-namespace="${pod.namespace}"><a href="#" class="pod-name-link" title="Ver detalhes">${pod.name}</a></td>` },
         { key: 'namespace', content: `<td class="pod-namespace">${namespaceDisplay}</td>` },
-        { key: 'status', content: `<td><span class="status-${pod.status.toLowerCase()}">${pod.status}</span></td>` },
-        { key: 'ready', content: `<td><span class="ready-${pod.ready.includes('/0') ? 'not-ready' : 'ready'}">${pod.ready}</span></td>` },
+        { key: 'status', content: `<td>${podStatusCell(pod)}</td>` },
+        { key: 'ready', content: `<td>${podReadyCell(pod)}</td>` },
         { key: 'restarts', content: `<td>${pod.restarts}</td>` },
         { key: 'age', content: `<td>${pod.age}</td>` },
         { key: 'cpuUsage', content: `<td class="resource-column">${cpuBar}</td>` },
@@ -1758,6 +1972,8 @@ function createPodRow(pod) {
         }
     });
 
+    cells.push(rowActionsCell(POD_ROW_ACTIONS));
+
     row.innerHTML = cells.join('');
 
     // Adicionar event listeners
@@ -1768,19 +1984,11 @@ function createPodRow(pod) {
 
 // Função para adicionar event listeners a uma linha
 function addPodRowListeners(row) {
-    // Context menu para nome do pod
-    const podNameCell = row.querySelector('.pod-name');
-    if (podNameCell) {
-        podNameCell.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            const cell = e.currentTarget;
-            const podName = cell && cell.dataset ? cell.dataset.podName : null;
-            const podNamespace = cell && cell.dataset ? cell.dataset.podNamespace : null;
-            if (podName && podNamespace) {
-                showPodContextMenu(e, podName, podNamespace);
-            }
-        });
-    }
+    // Menu de contexto na linha inteira, não só na célula do nome
+    row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showPodContextMenu(e, row.dataset.podName, row.dataset.podNamespace);
+    });
 
     // Click no nome do pod para abrir detalhes
     const podNameLink = row.querySelector('.pod-name-link');
@@ -1852,10 +2060,40 @@ function addProgressBarListeners(row) {
     });
 }
 
-async function loadPods() {
+// Lista os pods já com as métricas. Buscamos as métricas de todos, e não só
+// dos filtrados, porque é isso que permite refiltrar sem voltar ao cluster.
+async function fetchPodsWithMetrics() {
+    const namespace = elements.namespaceSelect.value; // Valor exato, incluindo 'all'
+    const pods = await ipcRenderer.invoke('get-pods', currentConnectionId, namespace);
+
     try {
-        const namespace = elements.namespaceSelect.value; // Passar o valor exato (incluindo 'all')
-        const pods = await ipcRenderer.invoke('get-pods', currentConnectionId, namespace);
+        const batchResults = await ipcRenderer.invoke('get-pods-metrics-batch', currentConnectionId, pods);
+        return batchResults.map(result => ({ ...result.pod, metrics: result.metrics }));
+    } catch (error) {
+        console.error('Erro ao buscar métricas em batch, usando fallback individual:', error);
+        // Fallback para chamadas individuais se o batch falhar
+        return Promise.all(pods.map(async (pod) => {
+            try {
+                return { ...pod, metrics: await ipcRenderer.invoke('get-pod-metrics', currentConnectionId, pod.name, pod.namespace) };
+            } catch (error) {
+                console.error(`Erro ao buscar métricas para pod ${pod.name}:`, error);
+                return {
+                    ...pod,
+                    metrics: {
+                        cpu: { current: '0m', requests: null, percentage: 0 },
+                        memory: { current: '0Mi', requests: null, percentage: 0 }
+                    }
+                };
+            }
+        }));
+    }
+}
+
+async function loadPods({ fromCache = false } = {}) {
+    try {
+        const pods = fromCache && sectionCache.pods
+            ? sectionCache.pods
+            : cacheSection('pods', await fetchPodsWithMetrics());
 
         // Preservar posição do scroll
         const tableContainer = elements.podsTableBody.closest('.table-container') || elements.podsTableBody.closest('.pods-table-wrapper');
@@ -1897,50 +2135,14 @@ async function loadPods() {
             return;
         }
 
-        // Buscar métricas de recursos para todos os pods em batch
-        let podsWithMetrics;
-        try {
-            const batchResults = await ipcRenderer.invoke('get-pods-metrics-batch', currentConnectionId, filteredPods);
-            podsWithMetrics = batchResults.map(result => ({ ...result.pod, metrics: result.metrics }));
-        } catch (error) {
-            console.error('Erro ao buscar métricas em batch, usando fallback individual:', error);
-            // Fallback para chamadas individuais se o batch falhar
-            podsWithMetrics = await Promise.all(
-                filteredPods.map(async (pod) => {
-                    try {
-                        const metrics = await ipcRenderer.invoke('get-pod-metrics', currentConnectionId, pod.name, pod.namespace);
-                        return { ...pod, metrics };
-                    } catch (error) {
-                        console.error(`Erro ao buscar métricas para pod ${pod.name}:`, error);
-                        return { 
-                            ...pod, 
-                            metrics: {
-                                cpu: { current: '0m', requests: null, percentage: 0 },
-                                memory: { current: '0Mi', requests: null, percentage: 0 }
-                            }
-                        };
-                    }
-                })
-            );
-        }
-
         // Adicionar pods à tabela usando a função que respeita configurações de colunas
-        podsWithMetrics.forEach(pod => {
+        updateSortIndicators('pods');
+
+        sortItems('pods', filteredPods).forEach(pod => {
             const row = createPodRow(pod);
             elements.podsTableBody.appendChild(row);
         });
 
-        // Adicionar event listeners para os botões de logs
-        elements.podsTableBody.querySelectorAll('.logs-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const podName = e.target.dataset.podName;
-                const podNamespace = e.target.dataset.podNamespace;
-                showPodLogs(podName, podNamespace);
-            });
-        });
-
-        // Event listeners para menu de contexto já são adicionados pela função addPodRowListeners
 
         // Adicionar event listeners para tooltips das barras de progresso
         elements.podsTableBody.querySelectorAll('.progress-bar').forEach(bar => {
@@ -2108,8 +2310,8 @@ function switchSection(section) {
         }
         // Pausar auto-refresh na seção de detalhes
         stopAutoRefresh();
-    } else if (section === 'serviceYaml') {
-        // Esconder header na seção de YAML de service
+    } else if (section === 'serviceYaml' || section === 'ingressYaml' || section === 'endpointYaml') {
+        // Esconder header nas seções de YAML de service/ingress/endpoint
         elements.dashboardHeader.classList.add('hidden');
         // Adicionar classe especial ao dashboard-content
         if (dashboardContent) {
@@ -2136,10 +2338,8 @@ function switchSection(section) {
     }
 
     // Se mudou para seção de logs, redimensionar o terminal após a transição
-    if (section === 'podLogs' && logViewer && logViewer.terminal) {
-        setTimeout(() => {
-            logViewer.resize();
-        }, 300);
+    if (section === 'podLogs') {
+        setTimeout(() => logsScreen.resize(), 300);
     }
 
     // Se mudou para seção de YAML, não precisa fazer nada especial
@@ -2163,6 +2363,12 @@ function updateSearchPlaceholder(section) {
             break;
         case 'services':
             elements.searchInput.placeholder = 'Buscar services...';
+            break;
+        case 'ingresses':
+            elements.searchInput.placeholder = 'Buscar ingresses...';
+            break;
+        case 'endpoints':
+            elements.searchInput.placeholder = 'Buscar endpoints...';
             break;
         case 'namespaces':
             elements.searchInput.placeholder = 'Buscar namespaces...';
@@ -2194,6 +2400,18 @@ function updateBreadcrumbCount(section) {
                 elements.currentSectionCount.textContent = elements.servicesCount.textContent;
             }
             break;
+        case 'ingresses':
+            // Usar o contador de ingresses
+            if (elements.ingressesCount) {
+                elements.currentSectionCount.textContent = elements.ingressesCount.textContent;
+            }
+            break;
+        case 'endpoints':
+            // Usar o contador de endpoints
+            if (elements.endpointsCount) {
+                elements.currentSectionCount.textContent = elements.endpointsCount.textContent;
+            }
+            break;
         case 'namespaces':
             // Usar o contador de namespaces
             if (elements.namespacesCount) {
@@ -2205,14 +2423,21 @@ function updateBreadcrumbCount(section) {
     }
 }
 
+// Digitar na busca só refiltra o que já está carregado — nenhuma chamada ao
+// cluster.
+const SECTION_LOADERS = {
+    pods: loadPods,
+    deployments: loadDeployments,
+    services: loadServices,
+    ingresses: loadIngresses,
+    endpoints: loadEndpoints,
+    namespaces: loadNamespaces
+};
+
 function filterCurrentSection() {
-    if (currentSection === 'pods' && currentConnectionId) {
-        loadPods();
-    } else if (currentSection === 'deployments' && currentConnectionId) {
-        loadDeployments();
-    } else if (currentSection === 'services' && currentConnectionId) {
-        loadServices();
-    }
+    if (!currentConnectionId) return;
+
+    SECTION_LOADERS[currentSection]?.({ fromCache: true });
 }
 
 function showDashboard() {
@@ -2367,6 +2592,30 @@ function removeTooltip() {
 
 // Função para renderizar barra de progresso de recursos
 function renderResourceProgressBar(current, requests, percentage, type, limits = null) {
+    // Uso atual só existe com Metrics Server. Sem ele, mostrar N/D em vez de
+    // uma barra — um valor estimado seria indistinguível de medição real.
+    if (current === null) {
+        const referenceValue = limits || requests;
+        const tooltipContent = referenceValue
+            ? `Uso atual indisponível (Metrics Server) — limite definido: ${referenceValue}`
+            : 'Uso atual indisponível (Metrics Server)';
+
+        return `
+            <div class="resource-usage-cell">
+                <div class="resource-value resource-value-unavailable" title="${tooltipContent}">N/D</div>
+            </div>
+        `;
+    }
+
+    // Uso medido, mas sem requests/limits não há denominador para uma barra.
+    if (percentage === null) {
+        return `
+            <div class="resource-usage-cell">
+                <div class="resource-value" title="Sem requests/limits definidos">${current}</div>
+            </div>
+        `;
+    }
+
     const safePercentage = Math.min(100, Math.max(0, percentage));
     
     // Definir cores baseadas na porcentagem e tipo
@@ -2426,381 +2675,6 @@ function formatMemory(memory) {
         return memory;
     }
 }
-
-// Funções de logs
-async function showPodLogs(podName, podNamespace) {
-    try {
-        // Parar streaming anterior se estiver ativo
-        stopLogsStreaming();
-
-        // Limpar informações de deployment
-        currentDeploymentName = null;
-        currentDeploymentNamespace = null;
-        currentDeploymentPods = [];
-
-        currentPodName = podName;
-        currentPodNamespace = podNamespace;
-
-        // Atualizar título
-        if (elements.podLogsTitle) {
-            elements.podLogsTitle.textContent = `${podName}`;
-        }
-
-        // Atualizar botão de voltar para pods
-        const backBtn = document.getElementById('backToPodsBtn');
-        if (backBtn) {
-            backBtn.innerHTML = '<span class="btn-icon">←</span>';
-        }
-
-        // Limpar completamente logs anteriores
-        clearLogs();
-
-        // Sempre reinicializar o LogViewer para garantir que funcione corretamente
-        initializeLogViewer();
-
-        // Carregar containers do pod
-        if (currentConnectionId) {
-            await loadPodContainers();
-        }
-
-        // Mostrar seção de logs
-        switchSection('podLogs');
-
-        // Iniciar streaming de logs
-        if (currentConnectionId) {
-            startLogsStreaming();
-        }
-        
-    } catch (error) {
-        console.error('Erro em showPodLogs:', error);
-        showError('Erro ao carregar logs: ' + error.message);
-    }
-}
-
-function initializeLogViewer() {
-    try {
-        // Verificar se o elemento logsContent existe
-        const logsContentElement = document.getElementById('logsContent');
-        if (!logsContentElement) {
-            console.error('Elemento logsContent não encontrado!');
-            return;
-        }
-        
-        // Destruir viewer anterior se existir
-        if (logViewer) {
-            logViewer.destroy();
-        }
-
-        // Criar novo LogViewer
-        logViewer = new LogViewer('logsContent', {
-            theme: {
-                background: '#1e1e1e',
-                foreground: '#d4d4d4',
-                cursor: '#ffffff',
-                selection: '#264f78'
-            },
-            fontSize: 12,
-            fontFamily: 'Consolas, "Courier New", monospace'
-        });
-
-        logViewer.initialize();
-
-        // Redimensionar apenas uma vez após inicialização
-        setTimeout(() => {
-            if (logViewer && logViewer.terminal) {
-                logViewer.resize();
-            }
-        }, 300);
-
-    } catch (error) {
-        console.error('Erro ao inicializar LogViewer:', error);
-        // Fallback para implementação anterior se houver erro
-        const logsContent = document.getElementById('logsContent');
-        if (logsContent) {
-            logsContent.innerHTML = '<div style="padding: 20px; color: #f14c4c;">Erro ao inicializar terminal de logs. Usando modo de compatibilidade.</div>';
-        }
-    }
-}
-
-async function loadPodContainers() {
-    try {
-        const containers = await ipcRenderer.invoke('get-pod-containers', currentConnectionId, currentPodName, currentPodNamespace);
-
-        // Verificar se o elemento containerSelect existe
-        if (!elements.containerSelect) {
-            console.error('Elemento containerSelect não encontrado!');
-            return;
-        }
-
-        // Limpar e adicionar containers ao dropdown
-        elements.containerSelect.innerHTML = '<option value="">Todos os containers</option>';
-
-        containers.forEach(container => {
-            const option = document.createElement('option');
-            option.value = container.name;
-            option.textContent = `${container.name}`;
-            if (!container.ready) {
-                option.textContent += ' [Não pronto]';
-                option.disabled = true;
-            }
-            elements.containerSelect.appendChild(option);
-        });
-
-    } catch (error) {
-        console.error('Erro ao carregar containers do pod:', error);
-        // Manter opção padrão "Todos os containers"
-        if (elements.containerSelect) {
-            elements.containerSelect.innerHTML = '<option value="">Todos os containers</option>';
-        }
-    }
-}
-
-
-
-async function startLogsStreaming() {
-    if (!currentConnectionId || !currentPodName || !currentPodNamespace) return;
-
-    try {
-        logsStreaming = true;
-        logsPaused = false;
-
-        // Atualizar botão de pausa
-        elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
-
-        // Mostrar mensagem de aguardando logs
-        const waitingEntry = {
-            id: 'waiting-logs',
-            timestamp: new Date().toISOString(),
-            podName: currentPodName,
-            level: 'info',
-            message: `Aguardando logs do pod ${currentPodName}...`,
-            raw: `Aguardando logs do pod ${currentPodName}`
-        };
-        addLogEntry(waitingEntry);
-
-        // Iniciar streaming de logs em tempo real
-        await streamLogs();
-
-    } catch (error) {
-        console.error('Erro ao iniciar streaming de logs:', error);
-        showError('Erro ao carregar logs: ' + error.message);
-    }
-}
-
-async function loadInitialLogs() {
-    // Função mantida para compatibilidade, mas não carrega mais logs históricos
-    // Agora usamos apenas streaming em tempo real
-}
-
-async function streamLogs() {
-    if (!logsStreaming || currentLogStreamId) return; // Não iniciar se já estiver em streaming
-
-    try {
-        const selectedContainer = elements.containerSelect.value || null;
-
-        // Iniciar o streaming no backend
-        const result = await ipcRenderer.invoke(
-            'stream-pod-logs',
-            currentConnectionId,
-            currentPodName,
-            currentPodNamespace,
-            selectedContainer,
-            30 // sinceSeconds, para pegar os últimos 30s para começar
-        );
-
-        if (result && result.success) {
-            currentLogStreamId = result.streamId;
-        } else {
-            throw new Error(result.message || 'Falha ao iniciar o streaming de logs.');
-        }
-
-    } catch (error) {
-        console.error('Erro ao iniciar o streaming de logs:', error);
-        const errorEntry = {
-            id: 'stream-setup-error',
-            timestamp: new Date().toISOString(),
-            podName: currentPodName,
-            level: 'error',
-            message: `Erro ao configurar streaming: ${error.message}`,
-            raw: `Erro: ${error.message}`
-        };
-        addLogEntry(errorEntry);
-        logsStreaming = false;
-    }
-}
-
-function addLogEntry(log) {
-    // Adicionar log aos dados (para compatibilidade e exportação)
-    logsData.push(log);
-
-    // Limitar número total de logs em memória
-    if (logsData.length > MAX_TOTAL_LOGS) {
-        const logsToRemove = logsData.length - MAX_TOTAL_LOGS;
-        logsData.splice(0, logsToRemove);
-    }
-
-    // Adicionar ao LogViewer se disponível (ele já gerencia o scroll automático)
-    if (logViewer) {
-        logViewer.addLog(log);
-    } else {
-        // Fallback para implementação anterior
-        renderLogEntry(log);
-
-        // Scroll para o final apenas se estivermos no final da lista
-        const isAtBottom = elements.logsContent.scrollTop + elements.logsContent.clientHeight >= elements.logsContent.scrollHeight - 10;
-        if (isAtBottom) {
-            elements.logsContent.scrollTop = elements.logsContent.scrollHeight;
-        }
-    }
-}
-
-function renderLogEntry(log) {
-    const logEntry = document.createElement('div');
-    logEntry.className = `log-entry ${logsOptions.logColoring ? log.level : ''}`;
-    logEntry.dataset.logId = log.id;
-
-    // Usar flexbox para layout responsivo
-    logEntry.style.display = 'flex';
-    logEntry.style.flexWrap = 'wrap';
-    logEntry.style.gap = '8px';
-    logEntry.style.alignItems = 'flex-start';
-
-    let content = '';
-
-    if (logsOptions.timestamp !== 'off') {
-        const date = new Date(log.timestamp);
-        const timestamp = logsOptions.timestamp === 'utc'
-            ? date.toISOString()
-            : date.toLocaleString();
-
-        // Indicar se o timestamp é aproximado
-        const timestampClass = log.isApproximateTimestamp ? 'log-timestamp approximate' : 'log-timestamp';
-        const timestampPrefix = log.isApproximateTimestamp ? '~' : '';
-        content += `<span class="${timestampClass}">[${timestampPrefix}${timestamp}]</span>`;
-    }
-
-    // Usar podName em vez de podId para logs reais
-    if (log.podName) {
-        content += `<span class="log-pod-id">${log.podName}</span>`;
-    }
-
-    if (log.ip) {
-        content += `<span class="log-ip">${log.ip}</span>`;
-    }
-
-    // Usar message ou raw dependendo do que estiver disponível
-    const message = log.message || log.raw || '';
-    content += `<span class="log-message">${escapeHtml(message)}</span>`;
-
-    logEntry.innerHTML = content;
-
-    // Aplicar quebra de linha ou scroll horizontal baseado nas opções
-    if (logsOptions.horizontalScroll) {
-        logEntry.style.whiteSpace = 'nowrap';
-        logEntry.style.overflow = 'visible';
-        logEntry.style.textOverflow = 'unset';
-    } else if (logsOptions.lineWrap) {
-        logEntry.style.whiteSpace = 'pre-wrap';
-        logEntry.style.overflow = 'visible';
-        logEntry.style.textOverflow = 'unset';
-    } else {
-        logEntry.style.whiteSpace = 'nowrap';
-        logEntry.style.overflow = 'hidden';
-        logEntry.style.textOverflow = 'ellipsis';
-    }
-
-    elements.logsContent.appendChild(logEntry);
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function updateLogsStats() {
-    let totalLogs = logsData.length;
-    let stats = null;
-
-    // Usar stats do LogViewer se disponível
-    if (logViewer) {
-        stats = logViewer.getStats();
-        totalLogs = stats.total;
-    }
-
-    const rate = logsStreaming && !logsPaused ? Math.floor(Math.random() * 10) + 1 : 0;
-
-    elements.logsCount.textContent = `${totalLogs} logs`;
-    elements.logsRate.textContent = `${rate}/s`;
-
-}
-
-function filterLogs() {
-    const entries = elements.logsContent.querySelectorAll('.log-entry');
-
-    entries.forEach(entry => {
-        const text = entry.textContent.toLowerCase();
-        const shouldShow = !logsFilter || text.includes(logsFilter);
-        entry.style.display = shouldShow ? 'block' : 'none';
-    });
-}
-
-function updateLogsDisplay() {
-    // Com LogViewer, não precisamos renderizar manualmente
-    // Os logs são adicionados automaticamente via addLog()
-    if (logViewer && logsData.length > 0) {
-        // Se por algum motivo o LogViewer não tem os logs, readicioná-los
-        const stats = logViewer.getStats();
-        if (stats.total === 0 && logsData.length > 0) {
-            logsData.forEach(log => logViewer.addLog(log));
-        }
-    }
-}
-
-function pauseLogsStreaming() {
-    logsPaused = true;
-    elements.pauseLogsBtn.innerHTML = '<i class="bi bi-play"></i> Retomar';
-}
-
-function resumeLogsStreaming() {
-    logsPaused = false;
-    elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
-}
-
-function stopLogsStreaming() {
-    if (currentLogStreamId) {
-        ipcRenderer.send('stop-stream-pod-logs', currentLogStreamId);
-        currentLogStreamId = null;
-    }
-
-    // Limpar o intervalo de polling antigo, por segurança
-    if (window.logsInterval) {
-        clearInterval(window.logsInterval);
-        window.logsInterval = null;
-    }
-
-    logsStreaming = false;
-    logsPaused = false;
-
-    elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
-
-    // Limpar indicador de modo de logs
-    const logsModeIndicator = document.getElementById('logsModeIndicator');
-    if (logsModeIndicator) {
-        logsModeIndicator.remove();
-    }
-}
-
-function clearLogs() {
-    logsData = [];
-    if (logViewer) {
-        logViewer.clear();
-    } else {
-        elements.logsContent.innerHTML = '';
-    }
-    updateLogsStats();
-}
-
 // Funções para gerenciar configurações de colunas
 function getColumnPreferencesKey(section) {
     return `kubedesk_columns_${section}_${currentContext?.cluster || 'default'}`;
@@ -2965,6 +2839,12 @@ function updateTableHeaders(section) {
             thead.appendChild(th);
         }
     });
+
+    // Ações ficam sempre no fim e fora do seletor de colunas
+    const actionsHeader = document.createElement('th');
+    actionsHeader.className = 'actions-column';
+    actionsHeader.textContent = 'Ações';
+    thead.appendChild(actionsHeader);
 }
 
 function initializeColumnPreferences() {
@@ -2985,494 +2865,27 @@ function initializeColumnPreferences() {
     });
 }
 
-function clearLogsDisplay() {
-    // Limpar completamente a visualização
-    elements.logsContent.innerHTML = '';
-
-    // Remover avisos de performance
-    const performanceWarning = document.querySelector('.performance-warning');
-    if (performanceWarning) {
-        performanceWarning.remove();
-    }
-
-    // Remover indicador de modo de logs
-    const logsModeIndicator = document.getElementById('logsModeIndicator');
-    if (logsModeIndicator) {
-        logsModeIndicator.remove();
-    }
-
-    // Resetar scroll
-    elements.logsContent.scrollTop = 0;
-}
-
-function downloadLogs(format) {
-    let content = '';
-    const filename = `pod-${currentPodName}-logs.${format}`;
-
-    // Usar LogViewer se disponível, senão usar logsData
-    if (logViewer) {
-        content = logViewer.exportLogs(format);
-    } else {
-        if (logsData.length === 0) {
-            showError('Nenhum log para exportar');
-            return;
-        }
-
-        if (format === 'csv') {
-            content = 'Timestamp,Pod Name,IP,Message,Level,Raw\n';
-            logsData.forEach(log => {
-                const message = (log.message || '').replace(/"/g, '""');
-                const raw = (log.raw || '').replace(/"/g, '""');
-                const timestamp = log.isApproximateTimestamp ? `~${log.timestamp}` : log.timestamp;
-                content += `"${timestamp}","${log.podName || ''}","${log.ip || ''}","${message}","${log.level}","${raw}"\n`;
-            });
-        } else {
-            logsData.forEach(log => {
-                const message = log.message || log.raw || '';
-                const timestamp = log.isApproximateTimestamp ? `~${log.timestamp}` : log.timestamp;
-                content += `[${timestamp}] ${log.podName || ''} ${log.ip || ''} ${message}\n`;
-            });
-        }
-    }
-
-    const blob = new Blob([content], { type: format === 'csv' ? 'text/csv' : 'text/plain' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-function copyLogs(format) {
-    if (logsData.length === 0) {
-        showError('Nenhum log para copiar');
-        return;
-    }
-
-    let content = '';
-
-    if (format === 'csv') {
-        content = 'Timestamp,Pod Name,IP,Message,Level,Raw\n';
-        logsData.forEach(log => {
-            const message = (log.message || '').replace(/"/g, '""');
-            const raw = (log.raw || '').replace(/"/g, '""');
-            const timestamp = log.isApproximateTimestamp ? `~${log.timestamp}` : log.timestamp;
-            content += `"${timestamp}","${log.podName || ''}","${log.ip || ''}","${message}","${log.level}","${raw}"\n`;
-        });
-    } else {
-        logsData.forEach(log => {
-            const message = log.message || log.raw || '';
-            const timestamp = log.isApproximateTimestamp ? `~${log.timestamp}` : log.timestamp;
-            content += `[${timestamp}] ${log.podName || ''} ${log.ip || ''} ${message}\n`;
-        });
-    }
-
-    navigator.clipboard.writeText(content).then(() => {
-        // Mostrar feedback visual (opcional)
-        console.log('Logs copiados para a área de transferência');
-    }).catch(err => {
-        showError('Erro ao copiar logs: ' + err.message);
-    });
-}
-
-function showLogsModeIndicator(mode) {
-    // Remover indicador anterior se existir
-    const existingIndicator = document.getElementById('logsModeIndicator');
-    if (existingIndicator) {
-        existingIndicator.remove();
-    }
-
-    // Criar novo indicador
-    const indicator = document.createElement('div');
-    indicator.id = 'logsModeIndicator';
-    indicator.className = `logs-mode-indicator ${mode === 'histórico' ? 'historical' : 'realtime'}`;
-
-    let icon, text, subtitle;
-    if (mode === 'histórico') {
-        icon = '<i class="bi bi-journal-text"></i>';
-        text = 'Modo Histórico';
-        subtitle = 'Últimos 5 minutos de logs';
-    } else {
-        icon = '<i class="bi bi-lightning"></i>';
-        text = 'Modo Tempo Real';
-        subtitle = 'Streaming ativo';
-    }
-
-    indicator.innerHTML = `
-        <span class="mode-icon">${icon}</span>
-        <span class="mode-text">${text}</span>
-        <span class="mode-subtitle">${subtitle}</span>
-    `;
-
-    // Inserir no início do container de logs
-    elements.logsContent.insertBefore(indicator, elements.logsContent.firstChild);
-}
-
 // Função para mostrar menu de contexto do pod
 function showPodContextMenu(event, podName, podNamespace) {
-    event.stopPropagation();
-    
-    // Remove menu anterior se existir
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-        existingMenu.remove();
-    }
-
-    const menu = document.createElement('div');
-    menu.className = 'context-menu';
-    menu.style.position = 'fixed';
-    menu.style.left = event.pageX + 'px';
-    menu.style.top = event.pageY + 'px';
-    menu.style.zIndex = '1000';
-
-    menu.innerHTML = `
-        <div class="context-menu-item" onclick="showPodLogs('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-text"></i>
-            Ver Logs
-        </div>
-        <div class="context-menu-item" onclick="showPodDetails('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-eye"></i>
-            Detalhes
-        </div>
-        <div class="context-menu-item" onclick="showPodYaml('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-code"></i>
-            YAML
-        </div>
-        <div class="context-menu-item" onclick="reloadPod('${podName}', '${podNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-arrow-clockwise"></i>
-            Reiniciar
-        </div>
-    `;
-
-    document.body.appendChild(menu);
-
-    // Remove menu ao clicar fora
-    const removeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener('click', removeMenu);
-        }
-    };
-
-    setTimeout(() => {
-        document.addEventListener('click', removeMenu);
-    }, 100);
-}
-
-// Função para lidar com ações do menu de contexto
-function handleContextMenuAction(action, data) {
-    switch (action) {
-        case 'show-logs':
-            showPodLogs(data.podName, data.podNamespace);
-            break;
-        case 'show-details':
-            showPodDetails(data.podName, data.podNamespace);
-            break;
-        case 'show-yaml':
-            showPodYaml(data.podName, data.podNamespace);
-            break;
-        case 'reload-pod':
-            reloadPod(data.podName, data.podNamespace);
-            break;
-        default:
-            console.log('Ação não reconhecida:', action);
-    }
-}
-
-// Função para lidar com ações do menu de contexto de deployments
-function handleDeploymentContextMenuAction(action, data) {
-    switch (action) {
-        case 'show-logs':
-            showDeploymentLogs(data.deploymentName, data.deploymentNamespace);
-            break;
-        case 'show-details':
-            showDeploymentDetails(data.deploymentName, data.deploymentNamespace);
-            break;
-        case 'show-yaml':
-            showDeploymentYAML(data.deploymentName, data.deploymentNamespace);
-            break;
-        case 'restart-deployment':
-            restartDeployment(data.deploymentName, data.deploymentNamespace);
-            break;
-        case 'scale-deployment':
-            scaleDeployment(data.deploymentName, data.deploymentNamespace);
-            break;
-        default:
-            console.log('Ação não reconhecida:', action);
-    }
+    showContextMenu(event, [
+        { icon: 'bi-file-text', label: 'Ver Logs', action: () => logsScreen.showPod(podName, podNamespace) },
+        { icon: 'bi-eye', label: 'Detalhes', action: () => showPodDetails(podName, podNamespace) },
+        { icon: 'bi-file-code', label: 'YAML', action: () => showPodYaml(podName, podNamespace) },
+        { icon: 'bi-arrow-clockwise', label: 'Reiniciar', action: () => reloadPod(podName, podNamespace) }
+    ]);
 }
 
 // Função para mostrar menu de contexto de deployment
 function showDeploymentContextMenu(event, deploymentName, deploymentNamespace) {
-    event.stopPropagation();
-    
-    // Remove menu anterior se existir
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-        existingMenu.remove();
-    }
-
-    const menu = document.createElement('div');
-    menu.className = 'context-menu';
-    menu.style.position = 'fixed';
-    menu.style.left = event.pageX + 'px';
-    menu.style.top = event.pageY + 'px';
-    menu.style.zIndex = '1000';
-
-    menu.innerHTML = `
-        <div class="context-menu-item" onclick="showDeploymentLogs('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-text"></i>
-            Ver Logs
-        </div>
-        <div class="context-menu-item" onclick="showDeploymentDetails('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-eye"></i>
-            Detalhes
-        </div>
-        <div class="context-menu-item" onclick="showDeploymentYAML('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-file-code"></i>
-            YAML
-        </div>
-        <div class="context-menu-item" onclick="restartDeployment('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-arrow-clockwise"></i>
-            Reiniciar
-        </div>
-        <div class="context-menu-item" onclick="scaleDeployment('${deploymentName}', '${deploymentNamespace}'); this.closest('.context-menu').remove();">
-            <i class="bi bi-arrows-fullscreen"></i>
-            Escalar
-        </div>
-    `;
-
-    document.body.appendChild(menu);
-
-    // Remove menu ao clicar fora
-    const removeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener('click', removeMenu);
-        }
-    };
-
-    setTimeout(() => {
-        document.addEventListener('click', removeMenu);
-    }, 100);
+    showContextMenu(event, [
+        { icon: 'bi-file-text', label: 'Ver Logs', action: () => logsScreen.showDeployment(deploymentName, deploymentNamespace) },
+        { icon: 'bi-eye', label: 'Detalhes', action: () => showDeploymentDetails(deploymentName, deploymentNamespace) },
+        { icon: 'bi-file-code', label: 'YAML', action: () => showDeploymentYAML(deploymentName, deploymentNamespace) },
+        { icon: 'bi-arrow-clockwise', label: 'Reiniciar', action: () => restartDeployment(deploymentName, deploymentNamespace) },
+        { icon: 'bi-arrows-fullscreen', label: 'Escalar', action: () => scaleDeployment(deploymentName, deploymentNamespace) }
+    ]);
 }
 
-// Função para mostrar logs de um deployment (logs agregados de todos os pods)
-async function showDeploymentLogs(deploymentName, deploymentNamespace) {
-    try {
-        showLoading(true);
-        
-        // Parar streaming anterior se estiver ativo
-        stopLogsStreaming();
-        
-        // Limpar informações de pod individual
-        currentPodName = null;
-        currentPodNamespace = null;
-        
-        // Buscar pods do deployment
-        const pods = await ipcRenderer.invoke('get-deployment-pods', currentConnectionId, deploymentName, deploymentNamespace);
-        
-        if (!pods || pods.length === 0) {
-            showToast('Nenhum pod encontrado para este deployment', 'warning');
-            showLoading(false);
-            return;
-        }
-        
-        // Armazenar informações para exibição
-        currentDeploymentName = deploymentName;
-        currentDeploymentNamespace = deploymentNamespace;
-        currentDeploymentPods = pods;
-        
-        // Atualizar título
-        if (elements.podLogsTitle) {
-            elements.podLogsTitle.textContent = `${deploymentName} (${pods.length} pod${pods.length !== 1 ? 's' : ''})`;
-        }
-        
-        // Atualizar botão de voltar
-        const backBtn = document.getElementById('backToPodsBtn');
-        if (backBtn) {
-            backBtn.innerHTML = '<span class="btn-icon">←</span>';
-        }
-        
-        // Limpar logs anteriores
-        clearLogs();
-        
-        // Sempre reinicializar o LogViewer
-        initializeLogViewer();
-        
-        // Mostrar seção de logs
-        switchSection('podLogs');
-        
-        // Carregar pods e containers
-        await loadDeploymentPodsAndContainers(pods);
-        
-        // Iniciar streaming de logs agregados
-        if (currentConnectionId) {
-            startDeploymentLogsStreaming(deploymentName, deploymentNamespace, pods);
-        }
-        
-        showLoading(false);
-    } catch (error) {
-        console.error('Erro ao mostrar logs do deployment:', error);
-        showError(`Erro ao carregar logs: ${error.message}`);
-        showLoading(false);
-    }
-}
-
-// Função para carregar pods e containers do deployment
-async function loadDeploymentPodsAndContainers(pods) {
-    try {
-        if (!elements.containerSelect) {
-            console.error('Elemento containerSelect não encontrado!');
-            return;
-        }
-
-        // Limpar dropdown
-        elements.containerSelect.innerHTML = '<option value="">Todos os pods e containers</option>';
-
-        // Adicionar opção para ver todos os containers
-        const allContainersOption = document.createElement('optgroup');
-        allContainersOption.label = 'Filtrar por container (todos os pods)';
-        
-        // Coletar containers únicos de todos os pods
-        const containerNames = new Set();
-        
-        for (const pod of pods) {
-            try {
-                const containers = await ipcRenderer.invoke('get-pod-containers', currentConnectionId, pod.name, pod.namespace);
-                containers.forEach(container => {
-                    containerNames.add(container.name);
-                });
-            } catch (error) {
-                console.error(`Erro ao carregar containers do pod ${pod.name}:`, error);
-            }
-        }
-
-        // Adicionar containers únicos
-        Array.from(containerNames).sort().forEach(containerName => {
-            const option = document.createElement('option');
-            option.value = `container:${containerName}`;
-            option.textContent = `📦 ${containerName}`;
-            allContainersOption.appendChild(option);
-        });
-        
-        if (containerNames.size > 0) {
-            elements.containerSelect.appendChild(allContainersOption);
-        }
-
-        // Adicionar opção para filtrar por pod específico
-        const podsOptgroup = document.createElement('optgroup');
-        podsOptgroup.label = 'Filtrar por pod específico';
-        
-        pods.forEach(pod => {
-            const option = document.createElement('option');
-            option.value = `pod:${pod.name}`;
-            // Truncar nome se for muito longo
-            const displayName = pod.name.length > 30 ? 
-                pod.name.substring(0, 27) + '...' : 
-                pod.name;
-            option.textContent = `🔷 ${displayName}`;
-            option.title = pod.name; // Tooltip com nome completo
-            podsOptgroup.appendChild(option);
-        });
-        
-        elements.containerSelect.appendChild(podsOptgroup);
-
-    } catch (error) {
-        console.error('Erro ao carregar pods e containers do deployment:', error);
-        if (elements.containerSelect) {
-            elements.containerSelect.innerHTML = '<option value="">Todos os pods e containers</option>';
-        }
-    }
-}
-
-// Função para iniciar streaming de logs agregados do deployment
-async function startDeploymentLogsStreaming(deploymentName, deploymentNamespace, pods) {
-    if (logsStreaming) {
-        stopLogsStreaming();
-    }
-
-    try {
-        logsStreaming = true;
-        logsPaused = false;
-
-        // Atualizar botão de pausa
-        if (elements.pauseLogsBtn) {
-            elements.pauseLogsBtn.innerHTML = '<i class="bi bi-pause"></i> Pausar';
-        }
-
-        // Limpar logs anteriores
-        clearLogs();
-
-        // Obter filtro selecionado
-        const selectedFilter = elements.containerSelect ? elements.containerSelect.value : '';
-        
-        let podsToStream = pods;
-        let containerFilter = '';
-        let filterMessage = '';
-
-        // Analisar o filtro selecionado
-        if (selectedFilter) {
-            if (selectedFilter.startsWith('pod:')) {
-                // Filtrar por pod específico
-                const podName = selectedFilter.substring(4);
-                podsToStream = pods.filter(p => p.name === podName);
-                filterMessage = ` (pod: ${podName})`;
-            } else if (selectedFilter.startsWith('container:')) {
-                // Filtrar por container específico em todos os pods
-                containerFilter = selectedFilter.substring(10);
-                filterMessage = ` (container: ${containerFilter})`;
-            }
-        }
-
-        // Mostrar mensagem de início
-        const startEntry = {
-            id: 'start-deployment-logs',
-            timestamp: new Date().toISOString(),
-            podName: deploymentName,
-            level: 'info',
-            message: `📊 Iniciando streaming de logs do deployment ${deploymentName}${filterMessage} (${podsToStream.length} pod${podsToStream.length !== 1 ? 's' : ''})...`,
-            raw: `Iniciando streaming de logs do deployment ${deploymentName}`
-        };
-        addLogEntry(startEntry);
-
-        // Iniciar streaming para cada pod filtrado
-        for (const pod of podsToStream) {
-            try {
-                const result = await ipcRenderer.invoke('stream-pod-logs', 
-                    currentConnectionId, 
-                    pod.name, 
-                    pod.namespace, 
-                    containerFilter || null,
-                    30 // sinceSeconds para pegar logs recentes
-                );
-                
-                if (!result || !result.success) {
-                    throw new Error(result?.message || 'Falha ao iniciar streaming');
-                }
-            } catch (error) {
-                console.error(`Erro ao iniciar streaming de logs do pod ${pod.name}:`, error);
-                const errorEntry = {
-                    id: `error-${pod.name}-${Date.now()}`,
-                    timestamp: new Date().toISOString(),
-                    podName: pod.name,
-                    level: 'error',
-                    message: `❌ Erro ao carregar logs do pod ${pod.name}: ${error.message}`,
-                    raw: `Erro ao carregar logs do pod ${pod.name}`
-                };
-                addLogEntry(errorEntry);
-            }
-        }
-        
-    } catch (error) {
-        console.error('Erro ao iniciar streaming de logs do deployment:', error);
-        showError('Erro ao carregar logs: ' + error.message);
-    }
-}
 
 // Função para mostrar detalhes de um deployment
 async function showDeploymentDetails(deploymentName, deploymentNamespace) {
@@ -3698,7 +3111,7 @@ function setupDeploymentDetailsButtons(deploymentName, deploymentNamespace) {
         logsBtn.replaceWith(logsBtn.cloneNode(true));
         const newLogsBtn = document.getElementById('viewDeploymentLogsBtn');
         newLogsBtn.addEventListener('click', async () => {
-            await showDeploymentLogs(deploymentName, deploymentNamespace);
+            await logsScreen.showDeployment(deploymentName, deploymentNamespace);
         });
     }
     
@@ -3858,13 +3271,13 @@ async function showPodDetails(podName, podNamespace) {
             elements.podDetailName.textContent = podDetails.metadata.name;
             elements.podDetailNamespace.textContent = podDetails.metadata.namespace;
             
-            // Status com badge colorido
-            const status = podDetails.status.phase;
+            // Status com badge colorido, pelo mesmo cálculo usado na lista
+            const { status } = computePodStatus(podDetails);
             elements.podDetailStatus.textContent = status;
-            elements.podDetailStatus.className = `status-badge ${status.toLowerCase()}`;
+            elements.podDetailStatus.className = `status-badge ${podStatusClass(status)}`;
             
             // Idade
-            const age = await ipcRenderer.invoke('calculate-age', podDetails.metadata.creationTimestamp);
+            const age = formatAge(podDetails.metadata.creationTimestamp);
             elements.podDetailAge.textContent = age;
             
             // IP do pod
@@ -3933,7 +3346,7 @@ async function showPodYaml(podName, podNamespace) {
             switchSection('podYaml');
             
             // Inicializar Monaco Editor
-            initializeYamlEditor(yamlContent);
+            renderYamlEditor('yamlEditor', yamlContent);
         } else {
             showError('YAML do pod não encontrado');
         }
@@ -3943,28 +3356,6 @@ async function showPodYaml(podName, podNamespace) {
         showError('Erro ao carregar YAML do pod: ' + error.message);
     } finally {
         showLoading(false);
-    }
-}
-
-// Função para inicializar o editor YAML com Prism.js
-function initializeYamlEditor(yamlContent) {
-    // Limpar container
-    elements.yamlEditor.innerHTML = '';
-
-    try {
-        const pre = document.createElement('pre');
-        pre.className = 'line-numbers';
-        const code = document.createElement('code');
-        code.className = 'language-yaml';
-        code.textContent = yamlContent;
-        pre.appendChild(code);
-        elements.yamlEditor.appendChild(pre);
-        if (typeof Prism !== 'undefined') {
-            Prism.highlightElement(code);
-        }
-    } catch (error) {
-        console.error('Erro ao criar editor YAML:', error);
-        elements.yamlEditor.innerHTML = '<div style="padding: 20px; color: #f14c4c;">Erro ao criar editor: ' + error.message + '</div>';
     }
 }
 
@@ -3989,125 +3380,53 @@ function downloadYaml() {
         return;
     }
 
-    const filename = `pod-${currentPodName}-${currentPodNamespace}.yaml`;
-    const blob = new Blob([currentYamlContent], { type: 'text/yaml' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
+    downloadBlob(currentYamlContent, `pod-${currentPodName}-${currentPodNamespace}.yaml`, 'text/yaml');
     showToast('YAML baixado com sucesso', 'success');
 }
 
-// Função para calcular uso de recursos (baseado em limits com fallback para requests)
-function calculateResourceUsage(requestValue, type, limitValue = null) {
-    let usagePercentage;
-    let currentValue;
-    let requestValueFormatted;
-    let limitValueFormatted;
-    
-    // Usar limits como referência, fallback para requests
-    const referenceValue = limitValue || requestValue;
-    const referenceType = limitValue ? 'limits' : 'requests';
-    
-    if (type === 'cpu') {
-        if (referenceValue) {
-            // Para CPU, simular uso baseado na referência (limits ou requests)
-            usagePercentage = Math.random() * 30 + 10; // 10-40%
-            const referenceMillicores = parseCpuValue(referenceValue);
-            const currentMillicores = Math.floor((referenceMillicores * usagePercentage) / 100);
-            currentValue = `${currentMillicores}m`;
-            requestValueFormatted = requestValue || '-';
-            limitValueFormatted = limitValue || '-';
-        } else {
-            // Sem requests nem limits - simular uso absoluto baixo
-            const simulatedMillicores = Math.floor(Math.random() * 50) + 10; // 10-60m
-            currentValue = `${simulatedMillicores}m`;
-            usagePercentage = Math.min(100, (simulatedMillicores / 100) * 100); // Baseado em 100m como referência
-            requestValueFormatted = '-';
-            limitValueFormatted = '-';
-        }
-    } else if (type === 'memory') {
-        if (referenceValue) {
-            // Para memória, simular uso baseado na referência (limits ou requests)
-            usagePercentage = Math.random() * 40 + 15; // 15-55%
-            const referenceBytes = parseMemoryValue(referenceValue);
-            const currentBytes = Math.floor((referenceBytes * usagePercentage) / 100);
-            currentValue = formatMemoryValue(currentBytes);
-            requestValueFormatted = requestValue || '-';
-            limitValueFormatted = limitValue || '-';
-        } else {
-            // Sem requests nem limits - simular uso absoluto baixo
-            const simulatedBytes = Math.floor(Math.random() * 500 * 1024 * 1024) + 100 * 1024 * 1024; // 100-600Mi
-            currentValue = formatMemoryValue(simulatedBytes);
-            usagePercentage = Math.min(100, (simulatedBytes / (1024 * 1024 * 1024)) * 100); // Baseado em 1Gi como referência
-            requestValueFormatted = '-';
-            limitValueFormatted = '-';
-        }
-    }
-    
+// Renderiza um bloco de recurso (CPU/memória) de um container nos detalhes do pod.
+function renderContainerResource(label, usage) {
+    const showBar = usage.percentage !== null && (usage.hasRequests || usage.hasLimits);
+
+    const allocation = `
+        <div class="resource-allocation">
+            <span>Allocation</span>
+            <span>Requests: ${usage.request}</span>
+            ${usage.hasLimits ? `<span>Limits: ${usage.limit}</span>` : ''}
+        </div>
+    `;
+
+    return `
+        <div class="resource-usage">
+            <div class="resource-header">
+                <span class="resource-label">${label}</span>
+                <span class="resource-value${usage.current === null ? ' resource-value-unavailable' : ''}"
+                      ${usage.current === null ? 'title="Uso atual indisponível (Metrics Server)"' : ''}>${usage.current ?? 'N/D'}</span>
+            </div>
+            ${showBar ? `
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: ${usage.percentage}%"></div>
+            </div>
+            ` : ''}
+            ${allocation}
+        </div>
+    `;
+}
+
+// Monta o descritor de uso de um container. current/percentage nulos significam
+// que o Metrics Server não respondeu — nesse caso a UI mostra N/D e omite a
+// barra, em vez de exibir um número que o usuário não conseguiria auditar.
+function buildContainerUsage(metric, requestValue, limitValue) {
     return {
-        current: currentValue,
-        percentage: Math.round(usagePercentage),
-        request: requestValueFormatted,
-        limit: limitValueFormatted,
+        current: metric?.current ?? null,
+        percentage: metric?.percentage ?? null,
+        request: requestValue || '-',
+        limit: limitValue || '-',
         hasRequests: !!requestValue,
-        hasLimits: !!limitValue,
-        referenceType: referenceType
+        hasLimits: !!limitValue
     };
 }
 
-// Função para converter valores de CPU para milicores
-function parseCpuValue(cpuStr) {
-    if (!cpuStr) return 0;
-    
-    if (cpuStr.endsWith('m')) {
-        return parseInt(cpuStr.slice(0, -1));
-    } else if (cpuStr.endsWith('n')) {
-        return Math.floor(parseInt(cpuStr.slice(0, -1)) / 1000000);
-    } else {
-        return Math.floor(parseFloat(cpuStr) * 1000);
-    }
-}
-
-// Função para converter valores de memória para bytes
-function parseMemoryValue(memStr) {
-    if (!memStr) return 0;
-    
-    const units = {
-        'Ki': 1024,
-        'Mi': 1024 * 1024,
-        'Gi': 1024 * 1024 * 1024,
-        'Ti': 1024 * 1024 * 1024 * 1024
-    };
-    
-    for (const [unit, multiplier] of Object.entries(units)) {
-        if (memStr.endsWith(unit)) {
-            return Math.floor(parseFloat(memStr.slice(0, -unit.length)) * multiplier);
-        }
-    }
-    
-    return parseInt(memStr) || 0;
-}
-
-// Função para formatar bytes em unidades legíveis
-function formatMemoryValue(bytes) {
-    const units = ['B', 'Ki', 'Mi', 'Gi', 'Ti'];
-    let size = bytes;
-    let unitIndex = 0;
-    
-    while (size >= 1024 && unitIndex < units.length - 1) {
-        size /= 1024;
-        unitIndex++;
-    }
-    
-    return `${size.toFixed(2)}${units[unitIndex]}`;
-}
 
 // Função auxiliar para converter CPU para millicores (copiada do main.js)
 function parseCpuToMillicores(cpuStr) {
@@ -4184,39 +3503,11 @@ async function renderPodContainers(podDetails) {
             const requests = container.resources?.requests || {};
             const limits = container.resources?.limits || {};
             
-            // Usar métricas reais se disponíveis, senão usar cálculo baseado em requests/limits
-            let cpuUsage, memoryUsage;
-            
-            if (podMetrics && podMetrics.cpu && podMetrics.memory) {
-                // Usar métricas reais do pod
-                // Para simplificar, usar as métricas do pod para todos os containers
-                // (em um cenário real, seria necessário buscar métricas por container individual)
-                
-                cpuUsage = {
-                    current: podMetrics.cpu.current,
-                    percentage: Math.round(podMetrics.cpu.percentage),
-                    request: requests.cpu || '-',
-                    limit: limits.cpu || '-',
-                    hasRequests: !!requests.cpu,
-                    hasLimits: !!limits.cpu,
-                    referenceType: limits.cpu ? 'limits' : 'requests'
-                };
-                
-                memoryUsage = {
-                    current: podMetrics.memory.current,
-                    percentage: Math.round(podMetrics.memory.percentage),
-                    request: requests.memory || '-',
-                    limit: limits.memory || '-',
-                    hasRequests: !!requests.memory,
-                    hasLimits: !!limits.memory,
-                    referenceType: limits.memory ? 'limits' : 'requests'
-                };
-            } else {
-                // Fallback para cálculo baseado em requests/limits
-                cpuUsage = calculateResourceUsage(requests.cpu, 'cpu', limits.cpu);
-                memoryUsage = calculateResourceUsage(requests.memory, 'memory', limits.memory);
-            }
-            
+            // O uso vem do Metrics Server; requests/limits vêm do spec do container.
+            // As métricas são do pod inteiro, então são repetidas para cada container.
+            const cpuUsage = buildContainerUsage(podMetrics?.cpu, requests.cpu, limits.cpu);
+            const memoryUsage = buildContainerUsage(podMetrics?.memory, requests.memory, limits.memory);
+
             containerDiv.innerHTML = `
                 <div class="container-header">
                     <div class="container-name">${container.name}</div>
@@ -4229,51 +3520,11 @@ async function renderPodContainers(podDetails) {
                     </div>
                     
                     <!-- CPU Usage -->
-                    <div class="resource-usage">
-                        <div class="resource-header">
-                            <span class="resource-label">CPU Usage</span>
-                            <span class="resource-value">${cpuUsage.current}</span>
-                        </div>
-                        ${(cpuUsage.hasRequests || cpuUsage.hasLimits) ? `
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${cpuUsage.percentage}%"></div>
-                        </div>
-                        <div class="resource-allocation">
-                            <span>Allocation</span>
-                            <span>Requests: ${cpuUsage.request}</span>
-                            ${cpuUsage.hasLimits ? `<span>Limits: ${cpuUsage.limit}</span>` : ''}
-                        </div>
-                        ` : `
-                        <div class="resource-allocation">
-                            <span>Allocation</span>
-                            <span>Requests: ${cpuUsage.request}</span>
-                        </div>
-                        `}
-                    </div>
-                    
+                    ${renderContainerResource('CPU Usage', cpuUsage)}
+
                     <!-- Memory Usage -->
-                    <div class="resource-usage">
-                        <div class="resource-header">
-                            <span class="resource-label">Memory Usage</span>
-                            <span class="resource-value">${memoryUsage.current}</span>
-                        </div>
-                        ${(memoryUsage.hasRequests || memoryUsage.hasLimits) ? `
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${memoryUsage.percentage}%"></div>
-                        </div>
-                        <div class="resource-allocation">
-                            <span>Allocation</span>
-                            <span>Requests: ${memoryUsage.request}</span>
-                            ${memoryUsage.hasLimits ? `<span>Limits: ${memoryUsage.limit}</span>` : ''}
-                        </div>
-                        ` : `
-                        <div class="resource-allocation">
-                            <span>Allocation</span>
-                            <span>Requests: ${memoryUsage.request}</span>
-                        </div>
-                        `}
-                    </div>
-                    
+                    ${renderContainerResource('Memory Usage', memoryUsage)}
+
                     <div class="container-detail">
                         <label>Restarts:</label>
                         <span>${containerStatus?.restartCount || 0}</span>
@@ -4444,6 +3695,12 @@ async function loadCurrentSectionSilently() {
             case 'services':
                 await loadServices();
                 break;
+            case 'ingresses':
+                await loadIngresses();
+                break;
+            case 'endpoints':
+                await loadEndpoints();
+                break;
             case 'namespaces':
                 await loadNamespaces();
                 break;
@@ -4516,15 +3773,4 @@ function showToast(message, type = 'info') {
         }, 300);
     }, 3000);
 }
-
-// Adicionar funções ao escopo global para uso em onclick handlers
-window.showPodLogs = showPodLogs;
-window.showPodDetails = showPodDetails;
-window.showPodYaml = showPodYaml;
-window.reloadPod = reloadPod;
-window.showDeploymentLogs = showDeploymentLogs;
-window.showDeploymentDetails = showDeploymentDetails;
-window.showDeploymentYAML = showDeploymentYAML;
-window.restartDeployment = restartDeployment;
-window.scaleDeployment = scaleDeployment;
 

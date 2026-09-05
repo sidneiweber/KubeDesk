@@ -746,6 +746,28 @@ body {
     margin-bottom: 20px;
 }
 
+/* O erro só sumia sozinho na próxima troca de seção */
+.error-dismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #fca5a5;
+    font-size: 1.4rem;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.error-dismiss:hover {
+    color: #ffffff;
+}
+
+.error-dismiss:focus-visible {
+    outline: 2px solid #ef4444;
+    outline-offset: 2px;
+}
+
 .error-icon {
     font-size: 1.5rem;
 }
@@ -875,6 +897,14 @@ body {
     flex-shrink: 0;
 }
 
+/* Uso atual indisponível (sem Metrics Server) — visivelmente distinto de um valor medido */
+.resource-value-unavailable {
+    color: #8a8a8a;
+    font-weight: 400;
+    font-style: italic;
+    cursor: help;
+}
+
 .progress-bar-container {
     flex: 1;
     min-width: 0;
@@ -996,7 +1026,11 @@ body {
 }
 
 .status-succeeded {
-    color: #10b981;
+    color: #60a5fa;
+}
+
+.status-unknown {
+    color: #94a3b8;
 }
 
 .ready-ready {
@@ -1115,18 +1149,87 @@ body {
     border-color: #4a9eff;
 }
 
-.action-btn.logs-btn {
-    background-color: transparent;
-    border-color: transparent;
-    color: #4a9eff;
-    padding: 6px 8px;
-    font-size: 1.1rem;
+.action-btn:focus-visible {
+    outline: 2px solid #4a9eff;
+    outline-offset: 2px;
 }
 
-.action-btn.logs-btn:hover {
-    background-color: rgba(74, 158, 255, 0.1);
+/* Coluna de ações: ícones discretos, que ganham contraste ao passar o mouse
+   na linha. Antes essas ações só existiam no menu de botão direito. */
+.row-actions {
+    white-space: nowrap;
+    text-align: right;
+    width: 1%;
+}
+
+.row-actions .action-btn {
+    background-color: transparent;
     border-color: transparent;
-    color: #3b82f6;
+    color: #9aa4b2;
+    padding: 4px 6px;
+    font-size: 1rem;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+tr:hover .row-actions .action-btn {
+    opacity: 1;
+}
+
+.row-actions .action-btn:hover {
+    background-color: rgba(74, 158, 255, 0.12);
+    border-color: transparent;
+    color: #4a9eff;
+    opacity: 1;
+}
+
+.row-actions .action-btn:focus-visible {
+    opacity: 1;
+}
+
+th.actions-column {
+    text-align: right;
+    width: 1%;
+    white-space: nowrap;
+}
+
+/* Ordenação por coluna. A seta pendura no aria-sort, que é o mesmo estado que
+   um leitor de tela anuncia — não há um "estado visual" separado para sair
+   de sincronia. */
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 20px;
+}
+
+th.sortable:hover {
+    color: #4a9eff;
+}
+
+th.sortable:focus-visible {
+    outline: 2px solid #4a9eff;
+    outline-offset: -2px;
+}
+
+th.sortable::after {
+    content: '↕';
+    position: absolute;
+    right: 6px;
+    opacity: 0.25;
+    font-size: 0.85em;
+}
+
+th[aria-sort="ascending"]::after {
+    content: '↑';
+    opacity: 1;
+    color: #4a9eff;
+}
+
+th[aria-sort="descending"]::after {
+    content: '↓';
+    opacity: 1;
+    color: #4a9eff;
 }
 
 /* Logs Section */
@@ -2524,7 +2627,8 @@ s section specific styles */
 }
 
 /* Service name styling */
-.service-name-link {
+.service-name-link,
+.resource-name-link {
     color: #4a9eff;
     text-decoration: none;
     cursor: pointer;
@@ -2532,9 +2636,16 @@ s section specific styles */
     font-weight: 500;
 }
 
-.service-name-link:hover {
+.service-name-link:hover,
+.resource-name-link:hover {
     text-decoration: underline;
     opacity: 0.8;
+}
+
+/* Um Endpoints pode listar dezenas de ip:porta; quebrar evita rolagem lateral */
+.endpoint-addresses {
+    word-break: break-word;
+    max-width: 480px;
 }
 
 /* Deployment name styling */
@@ -2894,7 +3005,12 @@ s section specific styles */
 }
 
 .status-badge.succeeded {
-    background-color: #4caf50;
+    background-color: #3b82f6;
+    color: #ffffff;
+}
+
+.status-badge.unknown {
+    background-color: #64748b;
     color: #ffffff;
 }
 
@@ -3519,4 +3635,32 @@ s section specific styles */
 
 .btn-primary:active {
     background-color: #2a7edf;
+}
+
+/* ---------------------------------------------------------------------------
+   Foco visível
+   Navegar por teclado exige ver onde se está. O padrão do Chromium some
+   contra o fundo escuro, então marcamos toda a superfície interativa.
+   --------------------------------------------------------------------------- */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid #4a9eff;
+    outline-offset: 2px;
+}
+
+.nav-link:focus-visible {
+    outline-offset: -2px;
+}
+
+.pod-name-link:focus-visible,
+.service-name-link:focus-visible,
+.resource-name-link:focus-visible,
+.deployment-name-link:focus-visible {
+    outline: 2px solid #4a9eff;
+    outline-offset: 2px;
+    border-radius: 2px;
 }

@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const k8s = require('@kubernetes/client-node');
 const yaml = require('js-yaml');
-const stream = require('stream');
+const { formatAge } = require('./shared/formatAge');
+const { computePodStatus } = require('./shared/podStatus');
 const LogService = require('./main/services/LogService');
 const DeploymentService = require('./main/services/DeploymentService');
 
@@ -118,6 +119,65 @@ ipcMain.handle('select-kubeconfig-file', async () => {
 // Armazenar configurações ativas em memória
 const activeConfigs = new Map();
 
+function getCluster(connectionId) {
+  const kc = activeConfigs.get(connectionId);
+  if (!kc) {
+    throw new Error('Conexão não encontrada');
+  }
+  return kc;
+}
+
+// Registra um handler IPC que opera sobre uma conexão ativa. Resolve o
+// connectionId antes de chamar fn e prefixa qualquer erro com a descrição da
+// operação, para o renderer exibir uma mensagem com contexto.
+function handleWithCluster(channel, description, fn) {
+  ipcMain.handle(channel, async (event, connectionId, ...args) => {
+    try {
+      return await fn(getCluster(connectionId), ...args);
+    } catch (error) {
+      throw new Error(`Erro ao ${description}: ${error.message}`);
+    }
+  });
+}
+
+// Serializa um objeto do K8s em YAML, sem managedFields (ruído de API).
+function toCleanYaml(body) {
+  const data = JSON.parse(JSON.stringify(body));
+  delete data.metadata?.managedFields;
+
+  return yaml.dump(data, {
+    indent: 2,
+    lineWidth: -1,
+    noRefs: true,
+    sortKeys: false
+  });
+}
+
+// Projeção de um Service para o formato consumido pelo renderer.
+function projectService(service) {
+  return {
+    metadata: {
+      name: service.metadata.name,
+      namespace: service.metadata.namespace,
+      creationTimestamp: service.metadata.creationTimestamp,
+      uid: service.metadata.uid,
+      resourceVersion: service.metadata.resourceVersion,
+      labels: service.metadata.labels || {},
+      annotations: service.metadata.annotations || {}
+    },
+    spec: {
+      type: service.spec.type,
+      clusterIP: service.spec.clusterIP,
+      externalIPs: service.spec.externalIPs || [],
+      sessionAffinity: service.spec.sessionAffinity,
+      loadBalancerIP: service.spec.loadBalancerIP,
+      ports: service.spec.ports || [],
+      selector: service.spec.selector || {}
+    },
+    status: service.status || {}
+  };
+}
+
 ipcMain.handle('connect-to-cluster', async (event, configPath, contextName) => {
   try {
     const kc = new k8s.KubeConfig();
@@ -142,192 +202,71 @@ ipcMain.handle('connect-to-cluster', async (event, configPath, contextName) => {
   }
 });
 
-ipcMain.handle('get-pods', async (event, connectionId, namespace = 'default') => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-pods', 'buscar pods', async (kc, namespace = 'default') => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = namespace === 'all'
+    ? await k8sApi.listPodForAllNamespaces()
+    : await k8sApi.listNamespacedPod(namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    let response;
-
-    if (namespace === 'all') {
-      // Listar pods de todos os namespaces
-      response = await k8sApi.listPodForAllNamespaces();
-    } else {
-      // Listar pods de um namespace específico
-      response = await k8sApi.listNamespacedPod(namespace);
-    }
-
-    const pods = response.body.items.map(pod => ({
-      name: pod.metadata.name,
-      namespace: pod.metadata.namespace,
-      status: pod.status.phase,
-      ready: `${pod.status.containerStatuses?.filter(c => c.ready).length || 0}/${pod.status.containerStatuses?.length || 0}`,
-      restarts: pod.status.containerStatuses?.reduce((total, c) => total + (c.restartCount || 0), 0) || 0,
-      age: calculateAge(pod.metadata.creationTimestamp),
-      node: pod.spec.nodeName,
-      ip: pod.status.podIP,
-      containers: pod.spec.containers.map(container => ({
-        name: container.name,
-        image: container.image,
-        resources: container.resources
-      })),
-      // Adicionar recursos agregados do pod
-      totalResources: calculatePodTotalResources(pod.spec.containers)
-    }));
-
-    return pods;
-  } catch (error) {
-    throw new Error(`Erro ao buscar pods: ${error.message}`);
-  }
+  return response.body.items.map(pod => ({
+    name: pod.metadata.name,
+    namespace: pod.metadata.namespace,
+    // status/ready/restarts saem do mesmo cálculo que o kubectl usa: a fase
+    // sozinha mostraria "Running" para um pod em CrashLoopBackOff
+    ...computePodStatus(pod),
+    age: formatAge(pod.metadata.creationTimestamp),
+    creationTimestamp: pod.metadata.creationTimestamp,
+    node: pod.spec.nodeName,
+    ip: pod.status.podIP,
+    containers: pod.spec.containers.map(container => ({
+      name: container.name,
+      image: container.image,
+      resources: container.resources
+    })),
+    // Adicionar recursos agregados do pod
+    totalResources: calculatePodTotalResources(pod.spec.containers)
+  }));
 });
 
-ipcMain.handle('get-services', async (event, connectionId, namespace = 'default') => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-services', 'buscar services', async (kc, namespace = 'default') => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = namespace === 'all'
+    ? await k8sApi.listServiceForAllNamespaces()
+    : await k8sApi.listNamespacedService(namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    let response;
-
-    if (namespace === 'all') {
-      // Listar services de todos os namespaces
-      response = await k8sApi.listServiceForAllNamespaces();
-    } else {
-      // Listar services de um namespace específico
-      response = await k8sApi.listNamespacedService(namespace);
-    }
-
-    const services = response.body.items.map(service => ({
-      metadata: {
-        name: service.metadata.name,
-        namespace: service.metadata.namespace,
-        creationTimestamp: service.metadata.creationTimestamp,
-        uid: service.metadata.uid,
-        resourceVersion: service.metadata.resourceVersion,
-        labels: service.metadata.labels || {},
-        annotations: service.metadata.annotations || {}
-      },
-      spec: {
-        type: service.spec.type,
-        clusterIP: service.spec.clusterIP,
-        externalIPs: service.spec.externalIPs || [],
-        sessionAffinity: service.spec.sessionAffinity,
-        loadBalancerIP: service.spec.loadBalancerIP,
-        ports: service.spec.ports || [],
-        selector: service.spec.selector || {}
-      },
-      status: service.status || {}
-    }));
-
-    return services;
-  } catch (error) {
-    throw new Error(`Erro ao buscar services: ${error.message}`);
-  }
+  return response.body.items.map(projectService);
 });
 
-ipcMain.handle('get-service', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-service', 'buscar service', async (kc, name, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedService(name, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedService(name, namespace);
-    
-    return {
-      metadata: {
-        name: response.body.metadata.name,
-        namespace: response.body.metadata.namespace,
-        creationTimestamp: response.body.metadata.creationTimestamp,
-        uid: response.body.metadata.uid,
-        resourceVersion: response.body.metadata.resourceVersion,
-        labels: response.body.metadata.labels || {},
-        annotations: response.body.metadata.annotations || {}
-      },
-      spec: {
-        type: response.body.spec.type,
-        clusterIP: response.body.spec.clusterIP,
-        externalIPs: response.body.spec.externalIPs || [],
-        sessionAffinity: response.body.spec.sessionAffinity,
-        loadBalancerIP: response.body.spec.loadBalancerIP,
-        ports: response.body.spec.ports || [],
-        selector: response.body.spec.selector || {}
-      },
-      status: response.body.status || {}
-    };
-  } catch (error) {
-    throw new Error(`Erro ao buscar service: ${error.message}`);
-  }
+  return projectService(response.body);
 });
 
-ipcMain.handle('get-service-yaml', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-service-yaml', 'buscar YAML do service', async (kc, name, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedService(name, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedService(name, namespace);
-    
-    // Remover managedFields do metadata para uma visualização mais limpa
-    const serviceData = JSON.parse(JSON.stringify(response.body));
-    if (serviceData.metadata && serviceData.metadata.managedFields) {
-      delete serviceData.metadata.managedFields;
-    }
-
-    // Converter para YAML usando a biblioteca js-yaml
-    try {
-      const yaml = require('js-yaml');
-      return yaml.dump(serviceData, {
-        indent: 2,
-        lineWidth: -1,
-        noRefs: true,
-        sortKeys: false
-      });
-    } catch (e) {
-      // Fallback para JSON formatado
-      return JSON.stringify(serviceData, null, 2);
-    }
-  } catch (error) {
-    throw new Error(`Erro ao buscar YAML do service: ${error.message}`);
-  }
+  return toCleanYaml(response.body);
 });
 
-ipcMain.handle('get-namespaces', async (event, connectionId) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-namespaces', 'buscar namespaces', async (kc) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.listNamespace();
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.listNamespace();
-    const namespaces = response.body.items.map(ns => ({
-      name: ns.metadata.name,
-      status: ns.status.phase,
-      age: calculateAge(ns.metadata.creationTimestamp)
-    }));
-
-    return namespaces;
-  } catch (error) {
-    throw new Error(`Erro ao buscar namespaces: ${error.message}`);
-  }
+  return response.body.items.map(ns => ({
+    name: ns.metadata.name,
+    status: ns.status.phase,
+    age: formatAge(ns.metadata.creationTimestamp),
+    creationTimestamp: ns.metadata.creationTimestamp
+  }));
 });
 
-ipcMain.handle('get-pod-logs', (event, connectionId, podName, namespace, containerName = null, tailLines = 100, sinceSeconds = 300) => {
-  const kc = activeConfigs.get(connectionId);
-  return LogService.getPodLogs(kc, podName, namespace, containerName, tailLines, sinceSeconds);
-});
-
+// Fora do handleWithCluster: além do kc, precisa do connectionId e do event
+// para emitir os chunks do stream de volta ao renderer.
 ipcMain.handle('stream-pod-logs', async (event, connectionId, podName, namespace, containerName = null, sinceSeconds = null) => {
-  const kc = activeConfigs.get(connectionId);
+  const kc = getCluster(connectionId);
   return LogService.streamPodLogs(kc, connectionId, podName, namespace, containerName, sinceSeconds, event);
 });
 
@@ -335,58 +274,29 @@ ipcMain.on('stop-stream-pod-logs', (event, streamId) => {
   LogService.stopLogStream(streamId);
 });
 
-ipcMain.handle('get-pod-containers', async (event, connectionId, podName, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-pod-containers', 'buscar containers do pod', async (kc, podName, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedPod(podName, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedPod(podName, namespace);
-
-    const containers = response.body.spec.containers.map(container => ({
-      name: container.name,
-      image: container.image,
-      ready: response.body.status.containerStatuses?.find(cs => cs.name === container.name)?.ready || false
-    }));
-
-    return containers;
-  } catch (error) {
-    throw new Error(`Erro ao buscar containers do pod: ${error.message}`);
-  }
+  return response.body.spec.containers.map(container => ({
+    name: container.name,
+    image: container.image,
+    ready: response.body.status.containerStatuses?.find(cs => cs.name === container.name)?.ready || false
+  }));
 });
 
-ipcMain.handle('get-pod-details', async (event, connectionId, podName, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-pod-details', 'buscar detalhes do pod', async (kc, podName, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedPod(podName, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedPod(podName, namespace);
-
-    return response.body;
-  } catch (error) {
-    throw new Error(`Erro ao buscar detalhes do pod: ${error.message}`);
-  }
-});
-
-ipcMain.handle('calculate-age', async (event, creationTimestamp) => {
-  return calculateAge(creationTimestamp);
+  return response.body;
 });
 
 // Handler para verificar se o Metrics Server está disponível
 ipcMain.handle('check-metrics-server', async (event, connectionId) => {
   try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+    const metricsApi = getCluster(connectionId).makeApiClient(k8s.CustomObjectsApi);
 
-    const metricsApi = kc.makeApiClient(k8s.CustomObjectsApi);
-    
     // Tentar listar métricas de pods em um namespace específico
     await metricsApi.listNamespacedCustomObject(
       'metrics.k8s.io',
@@ -407,10 +317,7 @@ ipcMain.handle('check-metrics-server', async (event, connectionId) => {
 
 ipcMain.handle('get-pod-metrics', async (event, connectionId, podName, namespace) => {
   try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+    const kc = getCluster(connectionId);
 
     // Buscar dados reais do pod
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
@@ -418,32 +325,22 @@ ipcMain.handle('get-pod-metrics', async (event, connectionId, podName, namespace
     const pod = response.body;
 
     // Tentar buscar métricas reais do Metrics Server
-    let realMetrics;
     try {
-      realMetrics = await getRealPodMetrics(kc, podName, namespace, pod);
+      return await getRealPodMetrics(kc, podName, namespace, pod);
     } catch (metricsError) {
-      // Fallback para cálculo baseado apenas nas requests/limits
-      realMetrics = calculateRealPodMetrics(pod);
+      // Sem Metrics Server ainda temos requests/limits do spec, mas não o uso
+      return podResourcesWithoutUsage(pod);
     }
-    
-    return realMetrics;
   } catch (error) {
     console.error('Erro ao buscar métricas do pod:', error);
-    // Fallback final: retornar métricas zeradas se não conseguir buscar dados
-    return {
-      cpu: { current: '0m', requests: null, limits: null, percentage: 0 },
-      memory: { current: '0Mi', requests: null, limits: null, percentage: 0 }
-    };
+    return unknownMetrics();
   }
 });
 
 // Handler para buscar métricas de múltiplos pods em batch
 ipcMain.handle('get-pods-metrics-batch', async (event, connectionId, pods) => {
   try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+    const kc = getCluster(connectionId);
 
     const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
     const metricsApi = kc.makeApiClient(k8s.CustomObjectsApi);
@@ -481,41 +378,19 @@ ipcMain.handle('get-pods-metrics-batch', async (event, connectionId, pods) => {
     const results = await Promise.all(
       podResults.map(async ({ pod, originalPod }) => {
         if (!pod) {
-          // Fallback para métricas zeradas se não conseguir buscar o pod
-          return {
-            pod: originalPod,
-            metrics: {
-              cpu: { current: '0m', requests: null, limits: null, percentage: 0 },
-              memory: { current: '0Mi', requests: null, limits: null, percentage: 0 }
-            }
-          };
+          return { pod: originalPod, metrics: unknownMetrics() };
         }
 
         try {
-          let realMetrics;
-          if (allPodMetrics) {
-            // Usar métricas reais do batch
-            const podMetrics = allPodMetrics.find(item => item.metadata.name === pod.metadata.name);
-            if (podMetrics) {
-              realMetrics = await processPodMetricsFromBatch(pod, podMetrics);
-            } else {
-              realMetrics = calculateRealPodMetrics(pod);
-            }
-          } else {
-            // Fallback para cálculo baseado em requests/limits
-            realMetrics = calculateRealPodMetrics(pod);
-          }
-          
-          return { pod: originalPod, metrics: realMetrics };
+          const podMetrics = allPodMetrics?.find(item => item.metadata.name === pod.metadata.name);
+          const metrics = podMetrics
+            ? buildPodMetrics(pod, podMetrics)
+            : podResourcesWithoutUsage(pod);
+
+          return { pod: originalPod, metrics };
         } catch (error) {
           console.error(`Erro ao processar métricas para pod ${pod.metadata.name}:`, error);
-          return {
-            pod: originalPod,
-            metrics: {
-              cpu: { current: '0m', requests: null, limits: null, percentage: 0 },
-              memory: { current: '0Mi', requests: null, limits: null, percentage: 0 }
-            }
-          };
+          return { pod: originalPod, metrics: unknownMetrics() };
         }
       })
     );
@@ -523,58 +398,44 @@ ipcMain.handle('get-pods-metrics-batch', async (event, connectionId, pods) => {
     return results;
   } catch (error) {
     console.error('Erro ao buscar métricas em batch:', error);
-    // Fallback: retornar métricas zeradas para todos os pods
-    return pods.map(pod => ({
-      pod,
-      metrics: {
-        cpu: { current: '0m', requests: null, limits: null, percentage: 0 },
-        memory: { current: '0Mi', requests: null, limits: null, percentage: 0 }
-      }
-    }));
+    return pods.map(pod => ({ pod, metrics: unknownMetrics() }));
   }
 });
 
-// Função para processar métricas de um pod a partir do batch
-async function processPodMetricsFromBatch(pod, podMetrics) {
-  // Calcular recursos totais do pod
+// Combina o uso medido pelo Metrics Server com os requests/limits do spec.
+// percentage nulo = sem denominador (pod sem requests/limits), não zero: o uso
+// é real, apenas não há referência para uma barra de progresso.
+function buildPodMetrics(pod, podMetrics) {
   const totalResources = calculatePodTotalResources(pod.spec.containers);
-  
-  // Calcular uso total dos containers
+
   let totalCpuUsage = 0;
   let totalMemoryUsage = 0;
-  
-  if (podMetrics.containers) {
-    podMetrics.containers.forEach(container => {
-      // CPU usage (em nanocores)
-      if (container.usage?.cpu) {
-        totalCpuUsage += parseCpuToMillicores(container.usage.cpu);
-      }
-      
-      // Memory usage (em bytes)
-      if (container.usage?.memory) {
-        totalMemoryUsage += parseMemoryToMi(container.usage.memory);
-      }
-    });
+
+  for (const container of podMetrics.containers || []) {
+    if (container.usage?.cpu) {
+      totalCpuUsage += parseCpuToMillicores(container.usage.cpu);
+    }
+    if (container.usage?.memory) {
+      totalMemoryUsage += parseMemoryToMi(container.usage.memory);
+    }
   }
 
-  // Calcular porcentagens baseadas nos limits (fallback para requests se não houver limits)
-  const cpuLimits = totalResources.cpuLimits ? parseCpuToMillicores(totalResources.cpuLimits) : 
-                    (totalResources.cpuRequests ? parseCpuToMillicores(totalResources.cpuRequests) : 0);
-  const memoryLimits = totalResources.memoryLimits ? parseMemoryToMi(totalResources.memoryLimits) : 
-                       (totalResources.memoryRequests ? parseMemoryToMi(totalResources.memoryRequests) : 0);
+  // Referência é limits, com fallback para requests
+  const cpuReference = parseCpuToMillicores(totalResources.cpuLimits || totalResources.cpuRequests);
+  const memoryReference = parseMemoryToMi(totalResources.memoryLimits || totalResources.memoryRequests);
 
   return {
     cpu: {
       current: `${totalCpuUsage}m`,
       requests: totalResources.cpuRequests,
       limits: totalResources.cpuLimits,
-      percentage: cpuLimits > 0 ? Math.round((totalCpuUsage / cpuLimits) * 100) : 0
+      percentage: cpuReference > 0 ? Math.round((totalCpuUsage / cpuReference) * 100) : null
     },
     memory: {
       current: formatMemoryIntelligently(`${totalMemoryUsage}Mi`),
       requests: totalResources.memoryRequests,
       limits: totalResources.memoryLimits,
-      percentage: memoryLimits > 0 ? Math.round((totalMemoryUsage / memoryLimits) * 100) : 0
+      percentage: memoryReference > 0 ? Math.round((totalMemoryUsage / memoryReference) * 100) : null
     }
   };
 }
@@ -605,53 +466,13 @@ async function getRealPodMetrics(kc, podName, namespace, pod) {
 
     // Encontrar as métricas do pod específico
     const podMetrics = podMetricsResponse.body.items.find(item => item.metadata.name === podName);
-    
+
     if (!podMetrics) {
       throw new Error('Métricas do pod não encontradas');
     }
 
-    // Calcular recursos totais do pod
-    const totalResources = calculatePodTotalResources(pod.spec.containers);
-    
-    // Calcular uso total dos containers
-    let totalCpuUsage = 0;
-    let totalMemoryUsage = 0;
-    
-    if (podMetrics.containers) {
-      podMetrics.containers.forEach(container => {
-        // CPU usage (em nanocores)
-        if (container.usage?.cpu) {
-          totalCpuUsage += parseCpuToMillicores(container.usage.cpu);
-        }
-        
-        // Memory usage (em bytes)
-        if (container.usage?.memory) {
-          totalMemoryUsage += parseMemoryToMi(container.usage.memory);
-        }
-      });
-    }
+    return buildPodMetrics(pod, podMetrics);
 
-    // Calcular porcentagens baseadas nos limits (fallback para requests se não houver limits)
-    const cpuLimits = totalResources.cpuLimits ? parseCpuToMillicores(totalResources.cpuLimits) : 
-                      (totalResources.cpuRequests ? parseCpuToMillicores(totalResources.cpuRequests) : 0);
-    const memoryLimits = totalResources.memoryLimits ? parseMemoryToMi(totalResources.memoryLimits) : 
-                         (totalResources.memoryRequests ? parseMemoryToMi(totalResources.memoryRequests) : 0);
-
-    return {
-      cpu: {
-        current: `${totalCpuUsage}m`,
-        requests: totalResources.cpuRequests,
-        limits: totalResources.cpuLimits,
-        percentage: cpuLimits > 0 ? Math.round((totalCpuUsage / cpuLimits) * 100) : 0
-      },
-      memory: {
-        current: formatMemoryIntelligently(`${totalMemoryUsage}Mi`),
-        requests: totalResources.memoryRequests,
-        limits: totalResources.memoryLimits,
-        percentage: memoryLimits > 0 ? Math.round((totalMemoryUsage / memoryLimits) * 100) : 0
-      }
-    };
-    
   } catch (error) {
     // Se a API de métricas não estiver disponível, tentar método alternativo
     if (error.status === 404 || error.message.includes('metrics.k8s.io')) {
@@ -661,59 +482,34 @@ async function getRealPodMetrics(kc, podName, namespace, pod) {
   }
 }
 
-// Função para calcular métricas reais de um pod (fallback)
-function calculateRealPodMetrics(pod) {
-  const containers = pod.spec.containers;
-  let totalCpuRequests = 0;
-  let totalCpuLimits = 0;
-  let totalMemoryRequests = 0;
-  let totalMemoryLimits = 0;
-
-  containers.forEach(container => {
-    if (container.resources) {
-      // CPU Requests
-      if (container.resources.requests?.cpu) {
-        totalCpuRequests += parseCpuToMillicores(container.resources.requests.cpu);
-      }
-      
-      // CPU Limits
-      if (container.resources.limits?.cpu) {
-        totalCpuLimits += parseCpuToMillicores(container.resources.limits.cpu);
-      }
-      
-      // Memory Requests
-      if (container.resources.requests?.memory) {
-        totalMemoryRequests += parseMemoryToMi(container.resources.requests.memory);
-      }
-      
-      // Memory Limits
-      if (container.resources.limits?.memory) {
-        totalMemoryLimits += parseMemoryToMi(container.resources.limits.memory);
-      }
-    }
-  });
-
-  // Para uso atual, vamos simular baseado nos limits (fallback para requests se não houver limits)
-  // Mas agora usando os valores reais dos limits como base
-  const cpuLimits = totalCpuLimits > 0 ? totalCpuLimits : totalCpuRequests;
-  const memoryLimits = totalMemoryLimits > 0 ? totalMemoryLimits : totalMemoryRequests;
-  
-  const cpuCurrent = cpuLimits > 0 ? Math.floor(cpuLimits * (0.1 + Math.random() * 0.3)) : 0;
-  const memoryCurrent = memoryLimits > 0 ? Math.floor(memoryLimits * (0.1 + Math.random() * 0.4)) : 0;
+// Métricas de um pod sem o uso atual: requests/limits vêm do spec e são dados
+// reais, mas o consumo só existe via Metrics Server. current/percentage nulos
+// sinalizam "indisponível" para a UI — nunca estimar, ou o usuário não
+// consegue distinguir de medição real.
+function podResourcesWithoutUsage(pod) {
+  const totalResources = calculatePodTotalResources(pod.spec.containers);
 
   return {
     cpu: {
-      current: `${cpuCurrent}m`,
-      requests: totalCpuRequests > 0 ? `${totalCpuRequests}m` : null,
-      limits: totalCpuLimits > 0 ? `${totalCpuLimits}m` : null,
-      percentage: cpuLimits > 0 ? Math.round((cpuCurrent / cpuLimits) * 100) : 0
+      current: null,
+      requests: totalResources.cpuRequests,
+      limits: totalResources.cpuLimits,
+      percentage: null
     },
     memory: {
-      current: formatMemoryIntelligently(`${memoryCurrent}Mi`),
-      requests: totalMemoryRequests > 0 ? formatMemoryIntelligently(`${totalMemoryRequests}Mi`) : null,
-      limits: totalMemoryLimits > 0 ? formatMemoryIntelligently(`${totalMemoryLimits}Mi`) : null,
-      percentage: memoryLimits > 0 ? Math.round((memoryCurrent / memoryLimits) * 100) : 0
+      current: null,
+      requests: totalResources.memoryRequests,
+      limits: totalResources.memoryLimits,
+      percentage: null
     }
+  };
+}
+
+// Métricas totalmente desconhecidas: nem o spec do pod pôde ser lido.
+function unknownMetrics() {
+  return {
+    cpu: { current: null, requests: null, limits: null, percentage: null },
+    memory: { current: null, requests: null, limits: null, percentage: null }
   };
 }
 
@@ -831,238 +627,142 @@ function formatMemoryIntelligently(bytes) {
 
 
 // Handler para buscar YAML do pod
-ipcMain.handle('get-pod-yaml', async (event, connectionId, podName, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-pod-yaml', 'buscar YAML do pod', async (kc, podName, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedPod(podName, namespace);
 
-    const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-    const response = await k8sApi.readNamespacedPod(podName, namespace);
-
-    // Remover managedFields do metadata para uma visualização mais limpa
-    const podData = JSON.parse(JSON.stringify(response.body));
-    if (podData.metadata && podData.metadata.managedFields) {
-      delete podData.metadata.managedFields;
-    }
-
-    // Converter o objeto do pod para YAML
-    const podYaml = yaml.dump(podData, {
-      indent: 2,
-      lineWidth: -1,
-      noRefs: true,
-      sortKeys: false
-    });
-
-    return podYaml;
-  } catch (error) {
-    throw new Error(`Erro ao buscar YAML do pod: ${error.message}`);
-  }
+  return toCleanYaml(response.body);
 });
 
 // ============================================================================
 // DEPLOYMENT HANDLERS
 // ============================================================================
 
-// Handler para listar deployments
-ipcMain.handle('get-deployments', async (event, connectionId, namespace = 'default') => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-deployments', 'buscar deployments',
+  (kc, namespace = 'default') => DeploymentService.listDeployments(kc, namespace));
 
-    return await DeploymentService.listDeployments(kc, namespace);
-  } catch (error) {
-    console.error('Erro ao buscar deployments:', error);
-    throw new Error(`Erro ao buscar deployments: ${error.message}`);
-  }
-});
+handleWithCluster('get-deployment-details', 'buscar detalhes do deployment',
+  (kc, name, namespace) => DeploymentService.getDeploymentDetails(kc, name, namespace));
 
-// Handler para obter detalhes de um deployment
-ipcMain.handle('get-deployment-details', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('get-deployment-yaml', 'buscar YAML do deployment',
+  (kc, name, namespace) => DeploymentService.getDeploymentYAML(kc, name, namespace));
 
-    return await DeploymentService.getDeploymentDetails(kc, name, namespace);
-  } catch (error) {
-    console.error('Erro ao buscar detalhes do deployment:', error);
-    throw new Error(`Erro ao buscar detalhes do deployment: ${error.message}`);
-  }
-});
+handleWithCluster('get-deployment-pods', 'buscar pods do deployment',
+  (kc, deploymentName, namespace) => DeploymentService.getDeploymentPods(kc, deploymentName, namespace));
 
-// Handler para obter YAML de um deployment
-ipcMain.handle('get-deployment-yaml', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
+handleWithCluster('scale-deployment', 'escalar deployment',
+  (kc, name, namespace, replicas) => DeploymentService.scaleDeployment(kc, name, namespace, replicas));
 
-    return await DeploymentService.getDeploymentYAML(kc, name, namespace);
-  } catch (error) {
-    console.error('Erro ao buscar YAML do deployment:', error);
-    throw new Error(`Erro ao buscar YAML do deployment: ${error.message}`);
-  }
-});
-
-// Handler para obter pods de um deployment
-ipcMain.handle('get-deployment-pods', async (event, connectionId, deploymentName, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
-
-    return await DeploymentService.getDeploymentPods(kc, deploymentName, namespace);
-  } catch (error) {
-    console.error('Erro ao buscar pods do deployment:', error);
-    throw new Error(`Erro ao buscar pods do deployment: ${error.message}`);
-  }
-});
-
-// Handler para escalar um deployment
-ipcMain.handle('scale-deployment', async (event, connectionId, name, namespace, replicas) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
-
-    return await DeploymentService.scaleDeployment(kc, name, namespace, replicas);
-  } catch (error) {
-    console.error('Erro ao escalar deployment:', error);
-    throw new Error(`Erro ao escalar deployment: ${error.message}`);
-  }
-});
-
-// Handler para reiniciar um deployment
-ipcMain.handle('restart-deployment', async (event, connectionId, name, namespace) => {
-  try {
-    const kc = activeConfigs.get(connectionId);
-    if (!kc) {
-      throw new Error('Conexão não encontrada');
-    }
-
-    return await DeploymentService.restartDeployment(kc, name, namespace);
-  } catch (error) {
-    console.error('Erro ao reiniciar deployment:', error);
-    throw new Error(`Erro ao reiniciar deployment: ${error.message}`);
-  }
-});
+handleWithCluster('restart-deployment', 'reiniciar deployment',
+  (kc, name, namespace) => DeploymentService.restartDeployment(kc, name, namespace));
 
 // ============================================================================
 // END DEPLOYMENT HANDLERS
 // ============================================================================
 
-// Handler para mostrar menu de contexto de pods
-ipcMain.handle('show-context-menu', async (event, podName, podNamespace) => {
-  const template = [
-    {
-      label: `Pod: ${podName}`,
-      enabled: false
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: '📋 Ver Logs',
-      click: () => {
-        event.sender.send('context-menu-action', 'show-logs', { podName, podNamespace });
-      }
-    },
-    {
-      label: '📊 Detalhes',
-      click: () => {
-        event.sender.send('context-menu-action', 'show-details', { podName, podNamespace });
-      }
-    },
-    {
-      label: '📄 YAML',
-      click: () => {
-        event.sender.send('context-menu-action', 'show-yaml', { podName, podNamespace });
-      }
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: '🔄 Reiniciar',
-      click: () => {
-        event.sender.send('context-menu-action', 'reload-pod', { podName, podNamespace });
-      }
-    }
-  ];
 
-  const menu = Menu.buildFromTemplate(template);
-  menu.popup();
-});
+// ============================================================================
+// NETWORKING HANDLERS (Ingresses / Endpoints)
+// ============================================================================
 
-// Handler para mostrar menu de contexto de deployments
-ipcMain.handle('show-deployment-context-menu', async (event, deploymentName, deploymentNamespace) => {
-  const template = [
-    {
-      label: `Deployment: ${deploymentName}`,
-      enabled: false
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: '📋 Ver Logs',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'show-logs', { deploymentName, deploymentNamespace });
-      }
-    },
-    {
-      label: '📊 Detalhes',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'show-details', { deploymentName, deploymentNamespace });
-      }
-    },
-    {
-      label: '📄 YAML',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'show-yaml', { deploymentName, deploymentNamespace });
-      }
-    },
-    {
-      type: 'separator'
-    },
-    {
-      label: '🔄 Reiniciar',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'restart-deployment', { deploymentName, deploymentNamespace });
-      }
-    },
-    {
-      label: '📏 Escalar',
-      click: () => {
-        event.sender.send('deployment-context-menu-action', 'scale-deployment', { deploymentName, deploymentNamespace });
-      }
-    }
-  ];
+// Concatena os endereços de entrada de um Ingress: os hosts declarados nas
+// regras. Sem host a regra vale para qualquer host, o que o kubectl mostra
+// como "*".
+function ingressHosts(ingress) {
+  const rules = ingress.spec?.rules || [];
+  const hosts = rules.map(rule => rule.host || '*');
 
-  const menu = Menu.buildFromTemplate(template);
-  menu.popup();
-});
-
-function calculateAge(creationTimestamp) {
-  if (!creationTimestamp) return 'Unknown';
-
-  const now = new Date();
-  const created = new Date(creationTimestamp);
-  const diffMs = now - created;
-
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  return [...new Set(hosts)];
 }
+
+// Endereços já atribuídos pelo controller (equivalente à coluna ADDRESS do
+// kubectl). Fica vazio enquanto o ingress não foi programado.
+function ingressAddresses(ingress) {
+  const entries = ingress.status?.loadBalancer?.ingress || [];
+
+  return entries.map(entry => entry.ip || entry.hostname).filter(Boolean);
+}
+
+// Portas expostas: 80 sempre, 443 quando há bloco TLS — mesma heurística do
+// kubectl, já que o Ingress não declara portas explicitamente.
+function ingressPorts(ingress) {
+  const ports = ['80'];
+  if (ingress.spec?.tls?.length) ports.push('443');
+
+  return ports;
+}
+
+handleWithCluster('get-ingresses', 'buscar ingresses', async (kc, namespace = 'default') => {
+  const k8sApi = kc.makeApiClient(k8s.NetworkingV1Api);
+  const response = namespace === 'all'
+    ? await k8sApi.listIngressForAllNamespaces()
+    : await k8sApi.listNamespacedIngress(namespace);
+
+  return response.body.items.map(ingress => ({
+    name: ingress.metadata.name,
+    namespace: ingress.metadata.namespace,
+    className: ingress.spec?.ingressClassName || '-',
+    hosts: ingressHosts(ingress),
+    addresses: ingressAddresses(ingress),
+    ports: ingressPorts(ingress),
+    age: formatAge(ingress.metadata.creationTimestamp),
+    creationTimestamp: ingress.metadata.creationTimestamp
+  }));
+});
+
+handleWithCluster('get-ingress-yaml', 'buscar YAML do ingress', async (kc, name, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.NetworkingV1Api);
+  const response = await k8sApi.readNamespacedIngress(name, namespace);
+
+  return toCleanYaml(response.body);
+});
+
+// Achata os subsets de um Endpoints em "ip:porta", como a coluna ENDPOINTS do
+// kubectl. Cada subset combina todos os seus endereços com todas as suas
+// portas.
+function endpointAddresses(endpoints) {
+  const result = [];
+
+  for (const subset of endpoints.subsets || []) {
+    const ports = subset.ports || [];
+    for (const address of subset.addresses || []) {
+      if (ports.length === 0) {
+        result.push(address.ip);
+      } else {
+        for (const port of ports) result.push(`${address.ip}:${port.port}`);
+      }
+    }
+  }
+
+  return result;
+}
+
+handleWithCluster('get-endpoints', 'buscar endpoints', async (kc, namespace = 'default') => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = namespace === 'all'
+    ? await k8sApi.listEndpointsForAllNamespaces()
+    : await k8sApi.listNamespacedEndpoints(namespace);
+
+  return response.body.items.map(endpoints => ({
+    name: endpoints.metadata.name,
+    namespace: endpoints.metadata.namespace,
+    addresses: endpointAddresses(endpoints),
+    // Contagem separada: um Endpoints sem addresses ainda pode ter pods
+    // não prontos, e a tela distingue "sem backend" de "backend não pronto".
+    notReadyCount: (endpoints.subsets || [])
+      .reduce((total, subset) => total + (subset.notReadyAddresses?.length || 0), 0),
+    age: formatAge(endpoints.metadata.creationTimestamp),
+    creationTimestamp: endpoints.metadata.creationTimestamp
+  }));
+});
+
+handleWithCluster('get-endpoint-yaml', 'buscar YAML do endpoint', async (kc, name, namespace) => {
+  const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+  const response = await k8sApi.readNamespacedEndpoints(name, namespace);
+
+  return toCleanYaml(response.body);
+});
+
+// ============================================================================
+// END NETWORKING HANDLERS
+// ============================================================================

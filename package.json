@@ -1,6 +1,6 @@
 {
   "name": "kubedesk",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Ferramenta para gerenciar clusters Kubernetes",
   "main": "src/main.js",
   "scripts": {
@@ -14,7 +14,7 @@
     "build:mac": "electron-builder --mac",
     "build:all": "electron-builder --linux --win --mac",
     "clean": "rm -rf dist",
-    "test:build": "./test-build.sh",
+    "test": "node test/run.js",
     "prebuild": "npm run clean"
   },
   "keywords": [
@@ -31,12 +31,11 @@
   },
   "dependencies": {
     "@kubernetes/client-node": "^0.21.0",
-    "js-yaml": "^4.1.0",
-    "node-fetch": "^3.3.2",
-    "@xterm/xterm": "^5.5.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.15.0",
     "@xterm/addon-web-links": "^0.11.0",
-    "ansi-to-html": "^0.7.2"
+    "@xterm/xterm": "^5.5.0",
+    "js-yaml": "^4.1.0",
+    "prismjs": "^1.30.0"
   }
 }
