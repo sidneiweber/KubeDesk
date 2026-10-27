@@ -6,6 +6,7 @@
   import { readyFraction } from '../../lib/sort'
   import ResourceTable, { type Column } from '../table/ResourceTable.svelte'
   import StatusPill from '../table/StatusPill.svelte'
+  import { openYaml } from '../../lib/yaml.svelte'
 
   let { namespace, labelSelector, selected, onlogs, emptyText = 'Nenhum pod neste namespace' }: {
     namespace: string
@@ -46,6 +47,7 @@
 >
   {#snippet actions(p)}
     <button onclick={() => onlogs(p)} aria-label="Logs de {p.name}">Logs</button>
+    <button onclick={() => openYaml('pods', p.namespace, p.name)} aria-label="YAML de {p.name}">YAML</button>
   {/snippet}
 </ResourceTable>
 

@@ -25,6 +25,8 @@ src/
 │       ├── pods.ts           # Linha de pod e watcher
 │       ├── deployments.ts    # Linha, status, watcher, escalar, reiniciar (+ teste)
 │       ├── namespaces.ts, services.ts, ingresses.ts, endpointSlices.ts (+ networking.test)
+│       ├── http.ts           # GET autenticado direto na API (logs, YAML)
+│       ├── yaml.ts           # YAML no formato do kubectl (+ teste)
 │       └── meta.ts           # Datas da API em epoch ms
 ├── main/prefs.ts             # Preferências em JSON na pasta de dados (+ teste)
 │       ├── logs.ts           # Stream de logs
@@ -69,6 +71,10 @@ src/
 - **Ações destrutivas pedem confirmação em `Modal`** e dizem o impacto real
   (ex.: reiniciar com estratégia Recreate derruba o serviço). O resultado
   aparece num toast; a tabela se atualiza sozinha pelo watch.
+- **YAML igual ao do kubectl**: chaves ordenadas, aspas duplas, listas sem
+  recuo extra e sem managedFields (opção no painel). Atenção: no js-yaml 5
+  as opções de estilo são `quoteStyle` e `seqNoIndent`; os nomes da v4 são
+  ignorados em silêncio pelo Vitest, só o typecheck acusa.
 - **Erros chegam com a mensagem do Kubernetes**, via `errorMessage()`, e não
   com o dump de headers do `ApiException`.
 - **Nunca simular dados de medição.** Métrica indisponível é `null` e a UI
@@ -104,10 +110,11 @@ src/
 | Services e detalhes (portas, endpoints ao vivo, pods do seletor) | Portado |
 | Ingresses e detalhes (regras, TLS) | Portado |
 | Endpoints, já sobre `discovery.k8s.io/v1 EndpointSlice` | Portado |
+| YAML de pods, deployments, namespaces, services e ingresses, idêntico ao `kubectl get -o yaml` | Portado |
+| YAML na tela de Endpoints (um service pode ter vários slices) | Falta |
 | Métricas de CPU/memória dos pods (`get-pods-metrics-batch`) | Falta |
 | Seletor de colunas com preferências salvas | Falta |
 | Menu de contexto nas linhas | Falta |
-| Visualizador de YAML (Prism) | Falta |
 | Logs: pausar, exportar/copiar, logs agregados de deployment | Falta |
 
 Todas as telas do app antigo existem na versão nova. O que ainda falta são

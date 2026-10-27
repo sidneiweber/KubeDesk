@@ -204,6 +204,10 @@ export interface KubeApi {
   scaleDeployment(namespace: string, name: string, replicas: number): Promise<void>
   /** Equivale a `kubectl rollout restart`. */
   restartDeployment(namespace: string, name: string): Promise<void>
+  /** Objeto como o `kubectl get -o yaml`. managedFields omitido por padrão. */
+  getYaml(kind: WatchKind, namespace: string, name: string, managedFields?: boolean): Promise<string>
+  /** Abre "Salvar como". Devolve o caminho gravado, ou null se cancelou. */
+  saveFile(defaultName: string, content: string): Promise<string | null>
   /** Preferências do usuário, gravadas em disco pelo main. */
   getPref(key: string): Promise<unknown>
   setPref(key: string, value: unknown): Promise<void>
@@ -221,6 +225,8 @@ export interface Invoke {
   'sub:stop': { args: [id: string]; result: void }
   'deployment:scale': { args: [namespace: string, name: string, replicas: number]; result: void }
   'deployment:restart': { args: [namespace: string, name: string]; result: void }
+  'resource:yaml': { args: [kind: WatchKind, namespace: string, name: string, managedFields: boolean]; result: string }
+  'file:save': { args: [defaultName: string, content: string]; result: string | null }
   'prefs:get': { args: [key: string]; result: unknown }
   'prefs:set': { args: [key: string, value: unknown]; result: void }
 }

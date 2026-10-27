@@ -7,6 +7,7 @@
   import ListPage from '../ListPage.svelte'
   import ResourceTable, { type Column } from '../table/ResourceTable.svelte'
   import IngressDetails from './IngressDetails.svelte'
+  import { openYaml } from '../../lib/yaml.svelte'
 
   const ingresses = new LiveList('ingresses', () => ({ namespace: session.namespace }))
 
@@ -55,6 +56,7 @@
     >
       {#snippet actions(i)}
         <button onclick={() => (openUid = i.uid)} aria-label="Detalhes de {i.name}">Detalhes</button>
+        <button onclick={() => openYaml('ingresses', i.namespace, i.name)} aria-label="YAML de {i.name}">YAML</button>
       {/snippet}
     </ResourceTable>
   </ListPage>

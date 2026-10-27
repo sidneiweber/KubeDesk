@@ -69,6 +69,10 @@ const api: KubeApi = {
   scaleDeployment: (namespace, name, replicas) => withCleanError(invoke('deployment:scale', namespace, name, replicas)),
   restartDeployment: (namespace, name) => withCleanError(invoke('deployment:restart', namespace, name)),
 
+  getYaml: (kind, namespace, name, managedFields = false) =>
+    withCleanError(invoke('resource:yaml', kind, namespace, name, managedFields)),
+  saveFile: (defaultName, content) => withCleanError(invoke('file:save', defaultName, content)),
+
   getPref: (key) => invoke('prefs:get', key),
   setPref: (key, value) => invoke('prefs:set', key, value),
 }

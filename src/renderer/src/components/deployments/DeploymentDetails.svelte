@@ -8,6 +8,7 @@
   import Fields from '../detail/Fields.svelte'
   import Labels from '../detail/Labels.svelte'
   import PodsWithLogs from '../detail/PodsWithLogs.svelte'
+  import { openYaml } from '../../lib/yaml.svelte'
 
   let { deployment, loading, onback, onscale, onrestart }: {
     /** undefined = removido do cluster (ou ainda carregando). */
@@ -30,6 +31,7 @@
     {#if deployment}
       <button onclick={() => onscale(deployment)}>Escalar</button>
       <button onclick={() => onrestart(deployment)}>Reiniciar</button>
+      <button onclick={() => openYaml('deployments', deployment.namespace, deployment.name)}>YAML</button>
     {/if}
   {/snippet}
 

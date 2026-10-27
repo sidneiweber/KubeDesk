@@ -8,6 +8,7 @@
   import ListPage from '../ListPage.svelte'
   import ResourceTable, { type Column } from '../table/ResourceTable.svelte'
   import StatusPill from '../table/StatusPill.svelte'
+  import { openYaml } from '../../lib/yaml.svelte'
 
   // Namespaces não têm namespace: a lista é sempre do cluster inteiro
   const namespaces = new LiveList('namespaces', () => ({ namespace: '' }))
@@ -49,6 +50,7 @@
   >
     {#snippet actions(n)}
       <button onclick={() => open(n)} aria-label="Ver pods de {n.name}">Ver pods</button>
+      <button onclick={() => openYaml('namespaces', '', n.name)} aria-label="YAML de {n.name}">YAML</button>
     {/snippet}
   </ResourceTable>
 </ListPage>

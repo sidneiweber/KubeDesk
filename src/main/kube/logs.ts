@@ -1,7 +1,7 @@
-import { HttpMethod, RequestContext, type KubeConfig } from '@kubernetes/client-node'
-import { fetch } from 'undici'
+import type { KubeConfig } from '@kubernetes/client-node'
 import type { LogOptions } from '@shared/api'
 import { errorMessage } from './errors'
+import { apiGet } from './http'
 import { LineBatcher } from './lineBatcher'
 
 /**
@@ -9,8 +9,8 @@ import { LineBatcher } from './lineBatcher'
  *
  * Não usa o `Log` da client-node 2.x: o callback de fim dele nunca é chamado,
  * e em erro HTTP ele descarta o corpo, onde está o motivo que o usuário
- * precisa ver ("container is waiting to start: ContainerCreating"). A
- * autenticação é a mesma, via applySecurityAuthentication.
+ * precisa ver ("container is waiting to start: ContainerCreating"). Por
+ * isso usa apiGet, com a mesma autenticação.
  *
  * onEnd é chamado uma única vez: null quando o stream acabou sozinho (pod
  * encerrado, follow desligado), ou a mensagem de erro. Não é chamado depois
@@ -35,29 +35,15 @@ export function streamLogs(
   }
 
   void (async () => {
-    const cluster = kc.getCurrentCluster()
-    if (!cluster) throw new Error('Nenhum cluster ativo')
-
-    const url = new URL(
-      `${cluster.server}/api/v1/namespaces/${encodeURIComponent(o.namespace)}/pods/${encodeURIComponent(o.pod)}/log`,
-    )
-    url.searchParams.set('container', o.container)
-    url.searchParams.set('follow', String(o.follow))
-    url.searchParams.set('timestamps', String(o.timestamps))
-    if (o.tailLines > 0) url.searchParams.set('tailLines', String(o.tailLines))
-
-    const ctx = new RequestContext(url.toString(), HttpMethod.GET)
-    await kc.applySecurityAuthentication(ctx)
-
-    const res = await fetch(url, {
-      headers: ctx.getHeaders(),
-      dispatcher: ctx.getDispatcher(),
-      signal: controller.signal,
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      throw { code: res.status, body: text, message: `HTTP ${res.status}` }
+    const query: Record<string, string> = {
+      container: o.container,
+      follow: String(o.follow),
+      timestamps: String(o.timestamps),
     }
+    if (o.tailLines > 0) query.tailLines = String(o.tailLines)
+
+    const path = `/api/v1/namespaces/${encodeURIComponent(o.namespace)}/pods/${encodeURIComponent(o.pod)}/log`
+    const res = await apiGet(kc, path, query, controller.signal)
     if (!res.body) throw new Error('Resposta sem corpo')
 
     for await (const chunk of res.body) {

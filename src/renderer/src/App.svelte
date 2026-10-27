@@ -10,6 +10,8 @@
   import IngressesView from './components/ingresses/IngressesView.svelte'
   import EndpointsView from './components/endpoints/EndpointsView.svelte'
   import Toasts from './components/Toasts.svelte'
+  import YamlViewer from './components/YamlViewer.svelte'
+  import { yamlView } from './lib/yaml.svelte'
 
 
   // Lembra o namespace escolhido para o contexto atual
@@ -42,6 +44,12 @@
       {/key}
     </main>
   </div>
+{/if}
+
+{#if yamlView.target}
+  {#key yamlView.target}
+    <YamlViewer target={yamlView.target} />
+  {/key}
 {/if}
 
 <Toasts />

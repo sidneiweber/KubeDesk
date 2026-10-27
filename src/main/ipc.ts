@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions, type WebContents } from 'electron'
 import type { KubeConfig } from '@kubernetes/client-node'
 import type { Batch, Events, Invoke, KubeconfigInfo, WatchKind, WatchOptions, WatchRows } from '@shared/api'
@@ -10,6 +11,7 @@ import { watchServices } from './kube/services'
 import { errorMessage } from './kube/errors'
 import { streamLogs } from './kube/logs'
 import { watchPods } from './kube/pods'
+import { resourceYaml } from './kube/yaml'
 import { PrefsStore } from './prefs'
 
 // Estado da sessão. Uma janela só, então um cluster ativo por vez.
@@ -134,6 +136,18 @@ export function registerIpc(): void {
 
   handle('deployment:scale', (_, namespace, name, replicas) => scaleDeployment(requireCluster(), namespace, name, replicas))
   handle('deployment:restart', (_, namespace, name) => restartDeployment(requireCluster(), namespace, name))
+
+  handle('resource:yaml', (_, kind, namespace, name, managedFields) =>
+    resourceYaml(requireCluster(), kind, namespace, name, managedFields))
+
+  handle('file:save', async (event, defaultName, content) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const options = { title: 'Salvar', defaultPath: defaultName }
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    await writeFile(result.filePath, content, 'utf8')
+    return result.filePath
+  })
 
   handle('sub:stop', (_, id) => {
     subscriptions.get(id)?.()

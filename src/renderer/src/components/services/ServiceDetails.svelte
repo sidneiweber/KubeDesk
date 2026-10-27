@@ -10,6 +10,7 @@
   import PodsWithLogs from '../detail/PodsWithLogs.svelte'
   import Section from '../detail/Section.svelte'
   import EndpointsTable from '../endpoints/EndpointsTable.svelte'
+  import { openYaml } from '../../lib/yaml.svelte'
 
   let { service, loading, onback }: {
     service: ServiceRow | undefined
@@ -29,6 +30,9 @@
 </script>
 
 <DetailPage back="Services" {onback} title={service?.name ?? 'Service'} namespace={service?.namespace} found={!!service} {loading}>
+  {#snippet actions()}
+    {#if service}<button onclick={() => openYaml('services', service.namespace, service.name)}>YAML</button>{/if}
+  {/snippet}
   {#if service}
     <Fields fields={[
       { label: 'Tipo', value: service.type },

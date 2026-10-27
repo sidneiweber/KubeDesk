@@ -5,6 +5,7 @@
   import { now } from '../../lib/now.svelte'
   import ResourceTable, { type Column } from '../table/ResourceTable.svelte'
   import StatusPill from '../table/StatusPill.svelte'
+  import { openYaml } from '../../lib/yaml.svelte'
 
   let { deployments, namespace, onopen, onscale, onrestart }: {
     deployments: LiveList<'deployments'>
@@ -50,6 +51,7 @@
     <button onclick={() => onopen(d)} aria-label="Detalhes de {d.name}">Detalhes</button>
     <button onclick={() => onscale(d)} aria-label="Escalar {d.name}">Escalar</button>
     <button onclick={() => onrestart(d)} aria-label="Reiniciar {d.name}">Reiniciar</button>
+    <button onclick={() => openYaml('deployments', d.namespace, d.name)} aria-label="YAML de {d.name}">YAML</button>
   {/snippet}
 </ResourceTable>
 

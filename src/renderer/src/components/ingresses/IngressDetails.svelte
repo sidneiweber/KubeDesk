@@ -6,6 +6,7 @@
   import Fields from '../detail/Fields.svelte'
   import Labels from '../detail/Labels.svelte'
   import Section from '../detail/Section.svelte'
+  import { openYaml } from '../../lib/yaml.svelte'
 
   let { ingress, loading, onback }: {
     ingress: IngressRow | undefined
@@ -15,6 +16,9 @@
 </script>
 
 <DetailPage back="Ingresses" {onback} title={ingress?.name ?? 'Ingress'} namespace={ingress?.namespace} found={!!ingress} {loading}>
+  {#snippet actions()}
+    {#if ingress}<button onclick={() => openYaml('ingresses', ingress.namespace, ingress.name)}>YAML</button>{/if}
+  {/snippet}
   {#if ingress}
     <Fields fields={[
       { label: 'Classe', value: ingress.className },
