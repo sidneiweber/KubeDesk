@@ -3,6 +3,8 @@
   import ConnectScreen from './components/ConnectScreen.svelte'
   import Sidebar, { type Section } from './components/Sidebar.svelte'
   import PodsView from './components/pods/PodsView.svelte'
+  import DeploymentsView from './components/deployments/DeploymentsView.svelte'
+  import Toasts from './components/Toasts.svelte'
 
   let section = $state<Section>('pods')
 </script>
@@ -17,11 +19,15 @@
       {#key session.context}
         {#if section === 'pods'}
           <PodsView />
+        {:else if section === 'deployments'}
+          <DeploymentsView />
         {/if}
       {/key}
     </main>
   </div>
 {/if}
+
+<Toasts />
 
 <style>
   .layout { display: flex; height: 100%; }

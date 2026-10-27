@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { Events, Invoke, KubeApi, Unsubscribe } from '@shared/api'
+import type { Batch, Events, Invoke, KubeApi, Unsubscribe } from '@shared/api'
 
 // Única ponte entre a página e o Node. O renderer roda com contextIsolation e
 // sandbox: não vê ipcRenderer, require nem process, só o que está aqui.
@@ -43,15 +43,19 @@ function cleanError(e: Error): string {
   return e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 }
 
-const api: KubeApi = {
-  kubeconfig: () => invoke('kubeconfig:get'),
-  selectKubeconfig: () => invoke('kubeconfig:select'),
-  connect: (context) => invoke('cluster:connect', context).catch((e: Error) => Promise.reject(new Error(cleanError(e)))),
+function withCleanError<T>(p: Promise<T>): Promise<T> {
+  return p.catch((e: Error) => Promise.reject(new Error(cleanError(e))))
+}
 
-  watchPods: (namespace, onBatch, onError) =>
+const api: KubeApi = {
+  kubeconfig: () => withCleanError(invoke('kubeconfig:get')),
+  selectKubeconfig: () => withCleanError(invoke('kubeconfig:select')),
+  connect: (context) => withCleanError(invoke('cluster:connect', context)),
+
+  watch: (kind, opts, onBatch, onError) =>
     subscribe(
-      (id) => invoke('pods:watch', id, namespace),
-      (id) => [on('pods:batch', id, onBatch), on('pods:error', id, onError)],
+      (id) => invoke('watch:start', id, kind, opts),
+      (id) => [on('watch:batch', id, onBatch as (b: Batch<unknown>) => void), on('watch:error', id, onError)],
       onError,
     ),
 
@@ -61,6 +65,9 @@ const api: KubeApi = {
       (id) => [on('logs:lines', id, onLines), on('logs:end', id, onEnd)],
       onEnd,
     ),
+
+  scaleDeployment: (namespace, name, replicas) => withCleanError(invoke('deployment:scale', namespace, name, replicas)),
+  restartDeployment: (namespace, name) => withCleanError(invoke('deployment:restart', namespace, name)),
 }
 
 contextBridge.exposeInMainWorld('kube', api)

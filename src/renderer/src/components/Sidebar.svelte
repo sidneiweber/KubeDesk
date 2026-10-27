@@ -14,7 +14,7 @@
       title: 'Workload',
       items: [
         { id: 'pods', label: 'Pods', ready: true },
-        { id: 'deployments', label: 'Deployments', ready: false },
+        { id: 'deployments', label: 'Deployments', ready: true },
         { id: 'namespaces', label: 'Namespaces', ready: false },
       ],
     },

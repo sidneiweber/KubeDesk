@@ -20,16 +20,26 @@ src/
 │   └── kube/
 │       ├── connection.ts     # kubeconfig, contextos, conexão
 │       ├── errors.ts         # Mensagem legível a partir de erros da client-node
+│       ├── watch.ts          # Watch genérico em lotes (informer + reset + retry)
 │       ├── podStatus.ts      # Status no formato do kubectl (+ teste)
-│       ├── pods.ts           # Watch de pods em lotes
+│       ├── pods.ts           # Linha de pod e watcher
+│       ├── deployments.ts    # Linha, status, watcher, escalar, reiniciar (+ teste)
 │       ├── logs.ts           # Stream de logs
 │       └── lineBatcher.ts    # Linhas inteiras, em lotes (+ teste)
 ├── preload/index.ts          # Expõe window.kube; nada mais do Node chega à página
 ├── shared/api.ts             # Contrato: tipos, canais invoke e canais de evento
 └── renderer/src/
     ├── App.svelte
-    ├── components/           # ConnectScreen, Sidebar, pods/, logs/
-    └── lib/                  # session (estado), sort, formatAge (+ testes)
+    ├── components/
+    │   ├── table/            # ResourceTable (filtro, ordenação, vazio) e StatusPill
+    │   ├── Modal.svelte      # <dialog> nativo: foco preso e Esc sem código nosso
+    │   ├── Toasts.svelte
+    │   └── pods/, deployments/, logs/, ConnectScreen, Sidebar
+    └── lib/
+        ├── liveList.svelte.ts  # Lista ao vivo: abre/fecha o watch com o componente
+        ├── session.svelte.ts   # Contexto e namespace atuais
+        ├── toasts.svelte.ts, now.svelte.ts
+        └── sort.ts, formatAge.ts (+ testes)
 ```
 
 ### Regras
@@ -40,13 +50,20 @@ src/
 - **Todo canal IPC está em `shared/api.ts`.** `Invoke` lista os
   request/response, com argumentos e retorno; `Events` lista os eventos do main
   para o renderer. Um canal fora dessas interfaces não compila.
-- **Dados vivos usam assinatura, não polling.** `watchPods` e `streamLogs`
-  devolvem uma função de cancelar. O preload escolhe o id e registra os
+- **Dados vivos usam assinatura, não polling.** `watch(kind, …)` e
+  `streamLogs` devolvem uma função de cancelar. No renderer, `LiveList` cuida
+  disso: abre o watch quando o componente aparece e fecha quando ele sai. O preload escolhe o id e registra os
   listeners *antes* de pedir ao main para começar, senão o primeiro lote
   poderia chegar antes de alguém estar ouvindo. O main encerra todas as
   assinaturas ao trocar de cluster, ao recarregar a página e ao fechar a janela.
-- **O main entrega dados prontos para a tela.** `PodRow` já vem com status,
-  cor e ready calculados; o renderer não importa `@kubernetes/client-node`.
+- **O main entrega dados prontos para a tela.** `PodRow` e `DeploymentRow` já
+  vêm com status, cor e contagens calculados; o renderer não importa
+  `@kubernetes/client-node`. Se o detalhe de um recurso é pequeno, ele vai na
+  própria linha (como em `DeploymentRow`) e os detalhes ficam ao vivo sem
+  outro watch.
+- **Ações destrutivas pedem confirmação em `Modal`** e dizem o impacto real
+  (ex.: reiniciar com estratégia Recreate derruba o serviço). O resultado
+  aparece num toast; a tabela se atualiza sozinha pelo watch.
 - **Erros chegam com a mensagem do Kubernetes**, via `errorMessage()`, e não
   com o dump de headers do `ApiException`.
 - **Nunca simular dados de medição.** Métrica indisponível é `null` e a UI
@@ -71,12 +88,13 @@ src/
 | Conexão (kubeconfig padrão ou arquivo, contexto) | Portado |
 | Pods: lista em tempo real, status do kubectl, ordenação, filtro local | Portado |
 | Logs de pod: container, tail, timestamps, follow, busca, linhas/s | Portado |
+| Deployments: lista, status do `rollout status`, escalar, reiniciar | Portado |
+| Detalhes do deployment: réplicas, condições, containers, labels, pods e logs | Portado |
 | Métricas de CPU/memória dos pods (`get-pods-metrics-batch`) | Falta |
 | Seletor de colunas com preferências salvas | Falta |
 | Menu de contexto nas linhas | Falta |
 | Visualizador de YAML (Prism) | Falta |
 | Logs: pausar, exportar/copiar, logs agregados de deployment | Falta |
-| Deployments: lista, detalhes, escalar, reiniciar | Falta |
 | Namespaces | Falta |
 | Services e detalhes | Falta |
 | Ingresses | Falta |
@@ -86,12 +104,16 @@ Quando todas estiverem portadas: apagar `legacy/`, `dev.sh` e `start.sh`.
 
 ## Como portar uma tela
 
+Toda tela de lista segue o caminho de Deployments:
+
 1. Ler o trecho em `legacy/` e listar o que a tela faz de fato.
-2. Declarar em `shared/api.ts` o formato da linha (`XxxRow`) e os canais.
-3. Escrever o módulo em `main/kube/`, devolvendo dados prontos para exibir. Se
-   a lista muda sozinha no cluster, usar watch como em `pods.ts`.
-4. Expor no preload e criar o componente em `renderer/src/components/`.
-5. Lógica pura (status, formatação, ordenação) ganha teste `*.test.ts` ao lado.
+2. `shared/api.ts`: declarar `XxxRow` e incluir em `WatchRows`.
+3. `main/kube/xxx.ts`: `toXxxRow` e um watcher que chama `watchResource`.
+   Registrar o watcher em `watchers` (`main/ipc.ts`). Ações (escalar, apagar…)
+   viram canais em `Invoke`, expostos no preload.
+4. Renderer: `new LiveList('xxx', () => ({ namespace }))` e `ResourceTable`
+   com as colunas. Status usa `StatusPill`.
+5. Lógica pura (status, formatação, seletores) ganha teste `*.test.ts` ao lado.
 6. Marcar a tela como pronta na `Sidebar` e nesta tabela.
 
 ## Verificação

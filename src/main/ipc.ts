@@ -1,7 +1,8 @@
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions, type WebContents } from 'electron'
 import type { KubeConfig } from '@kubernetes/client-node'
-import type { Events, Invoke, KubeconfigInfo } from '@shared/api'
+import type { Batch, Events, Invoke, KubeconfigInfo, WatchKind, WatchOptions, WatchRows } from '@shared/api'
 import { connect, listContexts, loadKubeconfig } from './kube/connection'
+import { restartDeployment, scaleDeployment, watchDeployments } from './kube/deployments'
 import { errorMessage } from './kube/errors'
 import { streamLogs } from './kube/logs'
 import { watchPods } from './kube/pods'
@@ -20,6 +21,19 @@ function handle<K extends keyof Invoke>(
 
 function send<K extends keyof Events>(target: WebContents, channel: K, ...args: Events[K]): void {
   if (!target.isDestroyed()) target.send(channel, ...args)
+}
+
+type Watcher<K extends WatchKind> = (
+  kc: KubeConfig,
+  opts: WatchOptions,
+  emit: (b: Batch<WatchRows[K]>) => void,
+  onError: (message: string) => void,
+) => () => void
+
+// Um watcher por recurso; uma tela nova entra aqui e em WatchRows
+const watchers: { [K in WatchKind]: Watcher<K> } = {
+  pods: watchPods,
+  deployments: watchDeployments,
 }
 
 function requireCluster(): KubeConfig {
@@ -74,15 +88,17 @@ export function registerIpc(): void {
     return result.namespaces
   })
 
-  handle('pods:watch', (event, id, namespace) => {
+  handle('watch:start', (event, id, kind, opts) => {
+    const watcher = watchers[kind] as Watcher<WatchKind> | undefined
+    if (!watcher) throw new Error(`Recurso desconhecido: ${kind}`)
     const target = event.sender
     subscribe(
       id,
-      watchPods(
+      watcher(
         requireCluster(),
-        namespace,
-        (batch) => send(target, 'pods:batch', id, batch),
-        (message) => send(target, 'pods:error', id, message),
+        opts,
+        (batch) => send(target, 'watch:batch', id, batch),
+        (message) => send(target, 'watch:error', id, message),
       ),
     )
   })
@@ -102,6 +118,9 @@ export function registerIpc(): void {
       ),
     )
   })
+
+  handle('deployment:scale', (_, namespace, name, replicas) => scaleDeployment(requireCluster(), namespace, name, replicas))
+  handle('deployment:restart', (_, namespace, name) => restartDeployment(requireCluster(), namespace, name))
 
   handle('sub:stop', (_, id) => {
     subscriptions.get(id)?.()
