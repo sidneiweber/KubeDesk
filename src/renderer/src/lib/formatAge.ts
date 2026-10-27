@@ -17,3 +17,8 @@ export function formatAge(createdMs: number, now: number): string {
   if (m > 0) return `${m}m`
   return `${s}s`
 }
+
+/** Data e hora locais, ex.: "27/10/2026, 20:22:45". */
+export function formatDateTime(ms: number): string {
+  return ms ? new Date(ms).toLocaleString('pt-BR') : '-'
+}

@@ -1,11 +1,16 @@
-import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions, type WebContents } from 'electron'
 import type { KubeConfig } from '@kubernetes/client-node'
 import type { Batch, Events, Invoke, KubeconfigInfo, WatchKind, WatchOptions, WatchRows } from '@shared/api'
 import { connect, listContexts, loadKubeconfig } from './kube/connection'
 import { restartDeployment, scaleDeployment, watchDeployments } from './kube/deployments'
+import { watchEndpointSlices } from './kube/endpointSlices'
+import { watchIngresses } from './kube/ingresses'
+import { watchNamespaces } from './kube/namespaces'
+import { watchServices } from './kube/services'
 import { errorMessage } from './kube/errors'
 import { streamLogs } from './kube/logs'
 import { watchPods } from './kube/pods'
+import { PrefsStore } from './prefs'
 
 // Estado da sessão. Uma janela só, então um cluster ativo por vez.
 let kubeconfigPath: string | null = null
@@ -34,6 +39,10 @@ type Watcher<K extends WatchKind> = (
 const watchers: { [K in WatchKind]: Watcher<K> } = {
   pods: watchPods,
   deployments: watchDeployments,
+  namespaces: watchNamespaces,
+  services: watchServices,
+  ingresses: watchIngresses,
+  endpointslices: watchEndpointSlices,
 }
 
 function requireCluster(): KubeConfig {
@@ -56,6 +65,10 @@ function kubeconfigInfo(): KubeconfigInfo {
 }
 
 export function registerIpc(): void {
+  const prefs = PrefsStore.inDir(app.getPath('userData'))
+  handle('prefs:get', (_, key) => prefs.get(key))
+  handle('prefs:set', (_, key, value) => prefs.set(key, value))
+
   handle('kubeconfig:get', () => {
     try {
       return kubeconfigInfo()

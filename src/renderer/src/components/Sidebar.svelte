@@ -1,29 +1,33 @@
-<script lang="ts" module>
-  export type Section = 'pods' | 'deployments' | 'namespaces' | 'services' | 'ingresses' | 'endpoints'
-</script>
-
 <script lang="ts">
   import { session } from '../lib/session.svelte'
+  import { LiveList } from '../lib/liveList.svelte'
+  import { nav, type Section } from '../lib/nav.svelte'
   import Logo from './Logo.svelte'
 
-  let { section = $bindable() }: { section: Section } = $props()
+  // Lista ao vivo: um namespace criado depois da conexão aparece sozinho.
+  // Até o primeiro lote, vale a lista que veio na conexão.
+  const live = new LiveList('namespaces', () => ({ namespace: '' }))
+  const listed = $derived(live.loading || live.error ? session.namespaces : live.rows.map((n) => n.name).sort())
+  // Sem permissão para listar: campo de texto em vez de seletor
+  const canList = $derived(listed.length > 0)
+  // O namespace atual continua na lista mesmo se for apagado, para o seletor não ficar em branco
+  const names = $derived(session.namespace && !listed.includes(session.namespace) ? [...listed, session.namespace] : listed)
 
-  // `ready: false` = tela ainda não migrada do app antigo
-  const groups: { title: string; items: { id: Section; label: string; ready: boolean }[] }[] = [
+  const groups: { title: string; items: { id: Section; label: string }[] }[] = [
     {
       title: 'Workloads',
       items: [
-        { id: 'pods', label: 'Pods', ready: true },
-        { id: 'deployments', label: 'Deployments', ready: true },
-        { id: 'namespaces', label: 'Namespaces', ready: false },
+        { id: 'pods', label: 'Pods' },
+        { id: 'deployments', label: 'Deployments' },
+        { id: 'namespaces', label: 'Namespaces' },
       ],
     },
     {
       title: 'Networking',
       items: [
-        { id: 'services', label: 'Services', ready: false },
-        { id: 'ingresses', label: 'Ingresses', ready: false },
-        { id: 'endpoints', label: 'Endpoints', ready: false },
+        { id: 'services', label: 'Services' },
+        { id: 'ingresses', label: 'Ingresses' },
+        { id: 'endpoints', label: 'Endpoints' },
       ],
     },
   ]
@@ -43,10 +47,10 @@
 
   <label class="ns">
     <span class="grp">Namespace</span>
-    {#if session.namespaces.length > 0}
+    {#if canList}
       <select bind:value={session.namespace}>
         <option value="">Todos</option>
-        {#each session.namespaces as ns (ns)}
+        {#each names as ns (ns)}
           <option value={ns}>{ns}</option>
         {/each}
       </select>
@@ -63,11 +67,10 @@
       <ul>
         {#each g.items as item (item.id)}
           <li>
-            <button class:active={section === item.id} disabled={!item.ready}
-                    aria-current={section === item.id ? 'page' : undefined}
-                    onclick={() => (section = item.id)}>
+            <button class:active={nav.section === item.id}
+                    aria-current={nav.section === item.id ? 'page' : undefined}
+                    onclick={() => (nav.section = item.id)}>
               {item.label}
-              {#if !item.ready}<span class="soon">em breve</span>{/if}
             </button>
           </li>
         {/each}
@@ -114,9 +117,7 @@
     padding: 9px 10px; border-radius: 8px; cursor: pointer;
     font-size: 14px; color: var(--side-text);
   }
-  nav button:hover:not(:disabled) { background: var(--side-hover); color: #fff; }
+  nav button:hover { background: var(--side-hover); color: #fff; }
   nav button.active { background: var(--azul); color: #fff; font-weight: 500; }
-  nav button:disabled { color: #6F86A6; cursor: default; }
   nav button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  .soon { font-family: var(--mono); font-size: 10px; color: #6F86A6; border: 1px solid #22477F; border-radius: 999px; padding: 0 7px; }
 </style>

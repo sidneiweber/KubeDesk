@@ -68,6 +68,9 @@ const api: KubeApi = {
 
   scaleDeployment: (namespace, name, replicas) => withCleanError(invoke('deployment:scale', namespace, name, replicas)),
   restartDeployment: (namespace, name) => withCleanError(invoke('deployment:restart', namespace, name)),
+
+  getPref: (key) => invoke('prefs:get', key),
+  setPref: (key, value) => invoke('prefs:set', key, value),
 }
 
 contextBridge.exposeInMainWorld('kube', api)

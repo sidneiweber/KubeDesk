@@ -6,7 +6,7 @@
   import DeploymentDetails from './DeploymentDetails.svelte'
   import ScaleDialog from './ScaleDialog.svelte'
   import RestartDialog from './RestartDialog.svelte'
-  import PageHeader from '../PageHeader.svelte'
+  import ListPage from '../ListPage.svelte'
 
   // Uma lista só, compartilhada por tabela e detalhes: os detalhes ficam ao
   // vivo sem abrir outro watch
@@ -32,10 +32,9 @@
 {#if detailsUid}
   <DeploymentDetails deployment={details} loading={deployments.loading} onback={() => (detailsUid = null)} onscale={scale} onrestart={restart} />
 {:else}
-  <div class="list">
-    <PageHeader title="Deployments" />
+  <ListPage title="Deployments">
     <DeploymentsTable {deployments} namespace={session.namespace} onopen={open} onscale={scale} onrestart={restart} />
-  </div>
+  </ListPage>
 {/if}
 
 {#if dialog && dialogTarget}
@@ -46,7 +45,3 @@
   {/if}
 {/if}
 
-<style>
-  .list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 20px; padding: 24px 32px; }
-  .list > :global(section) { flex: 1; }
-</style>

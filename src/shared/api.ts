@@ -74,6 +74,80 @@ export interface DeploymentRow {
   containers: ContainerSpec[]
 }
 
+export interface NamespaceRow {
+  uid: string
+  name: string
+  status: string
+  statusClass: StatusClass
+  created: number
+  labels: Record<string, string>
+}
+
+export interface ServiceRow {
+  uid: string
+  name: string
+  namespace: string
+  type: string
+  /** "None" para headless, como o kubectl. */
+  clusterIP: string
+  /** Coluna EXTERNAL-IP do kubectl: IPs, "<pending>" ou "<none>". */
+  externalIP: string
+  /** Coluna PORT(S) do kubectl: "80:30080/TCP". */
+  ports: string[]
+  /** Portas com nome e targetPort, para os detalhes. */
+  portDetails: { name: string; port: number; targetPort: string; nodePort: number | null; protocol: string }[]
+  /** Seletor de pods; vazio quando o service não seleciona pods (endpoints manuais, ExternalName). */
+  selector: string
+  sessionAffinity: string
+  created: number
+  labels: Record<string, string>
+}
+
+export interface IngressRule {
+  host: string
+  path: string
+  pathType: string
+  /** "service:porta" ou "Kind/nome" para backends de recurso. */
+  backend: string
+}
+
+export interface IngressRow {
+  uid: string
+  name: string
+  namespace: string
+  className: string
+  hosts: string[]
+  /** IPs/hostnames atribuídos pelo controller; vazio até ser programado. */
+  addresses: string[]
+  /** "80" ou "80, 443" quando há TLS, como o kubectl. */
+  ports: string
+  rules: IngressRule[]
+  tls: { hosts: string[]; secretName: string }[]
+  created: number
+  labels: Record<string, string>
+}
+
+export interface SliceEndpoint {
+  addresses: string[]
+  /** null = desconhecido; a API manda tratar como pronto. */
+  ready: boolean
+  terminating: boolean
+  pod: string
+  node: string
+}
+
+export interface EndpointSliceRow {
+  uid: string
+  name: string
+  namespace: string
+  /** Label kubernetes.io/service-name; vazio em slices criados à mão. */
+  service: string
+  addressType: string
+  ports: { name: string; port: number; protocol: string }[]
+  endpoints: SliceEndpoint[]
+  created: number
+}
+
 /** Lote de mudanças de uma lista. reset=true: substitua tudo. */
 export interface Batch<R> {
   reset: boolean
@@ -86,11 +160,15 @@ export interface Batch<R> {
 export interface WatchRows {
   pods: PodRow
   deployments: DeploymentRow
+  namespaces: NamespaceRow
+  services: ServiceRow
+  ingresses: IngressRow
+  endpointslices: EndpointSliceRow
 }
 export type WatchKind = keyof WatchRows
 
 export interface WatchOptions {
-  /** "" = todos. */
+  /** "" = todos. Ignorado em recursos sem namespace (namespaces). */
   namespace: string
   labelSelector?: string
 }
@@ -126,6 +204,9 @@ export interface KubeApi {
   scaleDeployment(namespace: string, name: string, replicas: number): Promise<void>
   /** Equivale a `kubectl rollout restart`. */
   restartDeployment(namespace: string, name: string): Promise<void>
+  /** Preferências do usuário, gravadas em disco pelo main. */
+  getPref(key: string): Promise<unknown>
+  setPref(key: string, value: unknown): Promise<void>
 }
 
 // Canais IPC. Os de invoke têm argumentos e retorno tipados em Invoke; os de
@@ -140,6 +221,8 @@ export interface Invoke {
   'sub:stop': { args: [id: string]; result: void }
   'deployment:scale': { args: [namespace: string, name: string, replicas: number]; result: void }
   'deployment:restart': { args: [namespace: string, name: string]; result: void }
+  'prefs:get': { args: [key: string]; result: unknown }
+  'prefs:set': { args: [key: string, value: unknown]; result: void }
 }
 
 export interface Events {

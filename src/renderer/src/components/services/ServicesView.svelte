@@ -1,0 +1,63 @@
+<script lang="ts">
+  import type { ServiceRow } from '@shared/api'
+  import { formatAge } from '../../lib/formatAge'
+  import { LiveList } from '../../lib/liveList.svelte'
+  import { now } from '../../lib/now.svelte'
+  import { session } from '../../lib/session.svelte'
+  import ListPage from '../ListPage.svelte'
+  import ResourceTable, { type Column } from '../table/ResourceTable.svelte'
+  import ServiceDetails from './ServiceDetails.svelte'
+
+  const services = new LiveList('services', () => ({ namespace: session.namespace }))
+
+  let openUid = $state<string | null>(null)
+  const opened = $derived(services.get(openUid))
+
+  $effect(() => {
+    void session.namespace
+    openUid = null
+  })
+
+  // Mesmas colunas e formatos do `kubectl get services`
+  const columns: Column<ServiceRow>[] = $derived([
+    { key: 'name', label: 'Nome', sort: (s) => s.name, text: (s) => s.name },
+    ...(session.namespace === ''
+      ? [{ key: 'namespace', label: 'Namespace', sort: (s: ServiceRow) => s.namespace, text: (s: ServiceRow) => s.namespace }]
+      : []),
+    { key: 'type', label: 'Tipo', sort: (s) => s.type, text: (s) => s.type },
+    { key: 'clusterIP', label: 'Cluster IP', sort: (s) => s.clusterIP, text: (s) => s.clusterIP },
+    { key: 'externalIP', label: 'External IP', sort: (s) => s.externalIP, cell: external },
+    { key: 'ports', label: 'Portas', sort: (s) => s.ports.join(','), text: (s) => s.ports.join(',') || '<none>' },
+    { key: 'age', label: 'Idade', sort: (s) => (s.created ? -s.created : null), text: (s) => formatAge(s.created, now.value) },
+  ])
+</script>
+
+{#snippet external(s: ServiceRow)}
+  <span class:muted={s.externalIP === '<none>'} class:pending={s.externalIP === '<pending>'}>{s.externalIP}</span>
+{/snippet}
+
+{#if openUid}
+  <ServiceDetails service={opened} loading={services.loading} onback={() => (openUid = null)} />
+{:else}
+  <ListPage title="Services">
+    <ResourceTable
+      rows={services.rows}
+      {columns}
+      search={(s) => `${s.name} ${s.type} ${s.clusterIP} ${s.externalIP} ${s.ports.join(' ')}`}
+      loading={services.loading}
+      error={services.error}
+      noun="services"
+      emptyText="Nenhum service neste namespace"
+      onactivate={(s) => (openUid = s.uid)}
+    >
+      {#snippet actions(s)}
+        <button onclick={() => (openUid = s.uid)} aria-label="Detalhes de {s.name}">Detalhes</button>
+      {/snippet}
+    </ResourceTable>
+  </ListPage>
+{/if}
+
+<style>
+  .muted { color: var(--muted); }
+  .pending { color: var(--pend); }
+</style>

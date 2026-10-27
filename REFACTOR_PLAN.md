@@ -24,6 +24,9 @@ src/
 │       ├── podStatus.ts      # Status no formato do kubectl (+ teste)
 │       ├── pods.ts           # Linha de pod e watcher
 │       ├── deployments.ts    # Linha, status, watcher, escalar, reiniciar (+ teste)
+│       ├── namespaces.ts, services.ts, ingresses.ts, endpointSlices.ts (+ networking.test)
+│       └── meta.ts           # Datas da API em epoch ms
+├── main/prefs.ts             # Preferências em JSON na pasta de dados (+ teste)
 │       ├── logs.ts           # Stream de logs
 │       └── lineBatcher.ts    # Linhas inteiras, em lotes (+ teste)
 ├── preload/index.ts          # Expõe window.kube; nada mais do Node chega à página
@@ -32,12 +35,14 @@ src/
     ├── App.svelte
     ├── components/
     │   ├── table/            # ResourceTable (filtro, ordenação, vazio) e StatusPill
-    │   ├── Modal.svelte      # <dialog> nativo: foco preso e Esc sem código nosso
-    │   ├── Toasts.svelte
-    │   └── pods/, deployments/, logs/, ConnectScreen, Sidebar
+    │   ├── detail/           # DetailPage, Section, Fields, Labels, PodsWithLogs
+    │   ├── ListPage, PageHeader, Logo, Modal, Toasts, ConnectScreen, Sidebar
+    │   └── pods/, deployments/, namespaces/, services/, ingresses/, endpoints/, logs/
     └── lib/
         ├── liveList.svelte.ts  # Lista ao vivo: abre/fecha o watch com o componente
-        ├── session.svelte.ts   # Contexto e namespace atuais
+        ├── session.svelte.ts   # Contexto e namespace atuais (namespace lembrado por contexto)
+        ├── nav.svelte.ts       # Seção aberta
+        ├── endpoints.ts        # Agrupa EndpointSlices por service (+ teste)
         ├── toasts.svelte.ts, now.svelte.ts
         └── sort.ts, formatAge.ts (+ testes)
 ```
@@ -68,6 +73,10 @@ src/
   com o dump de headers do `ApiException`.
 - **Nunca simular dados de medição.** Métrica indisponível é `null` e a UI
   mostra `N/D` (regra mantida do app antigo).
+- **Preferências ficam no main** (`prefs:get`/`prefs:set`, arquivo
+  `preferences.json` na pasta de dados). O localStorage do renderer com
+  sandbox grava em disco com atraso e perde a última mudança se o app for
+  encerrado de forma abrupta; não use para nada que precise persistir.
 - **Sem CDN.** O app precisa funcionar offline; a CSP em `index.html` bloqueia
   qualquer origem externa.
 
@@ -90,17 +99,20 @@ src/
 | Logs de pod: container, tail, timestamps, follow, busca, linhas/s | Portado |
 | Deployments: lista, status do `rollout status`, escalar, reiniciar | Portado |
 | Detalhes do deployment: réplicas, condições, containers, labels, pods e logs | Portado |
+| Namespaces (abrir leva aos pods; lista da barra lateral ao vivo) | Portado |
+| Namespace lembrado por contexto | Portado |
+| Services e detalhes (portas, endpoints ao vivo, pods do seletor) | Portado |
+| Ingresses e detalhes (regras, TLS) | Portado |
+| Endpoints, já sobre `discovery.k8s.io/v1 EndpointSlice` | Portado |
 | Métricas de CPU/memória dos pods (`get-pods-metrics-batch`) | Falta |
 | Seletor de colunas com preferências salvas | Falta |
 | Menu de contexto nas linhas | Falta |
 | Visualizador de YAML (Prism) | Falta |
 | Logs: pausar, exportar/copiar, logs agregados de deployment | Falta |
-| Namespaces | Falta |
-| Services e detalhes | Falta |
-| Ingresses | Falta |
-| Endpoints (portar já para `discovery.k8s.io/v1 EndpointSlice`) | Falta |
 
-Quando todas estiverem portadas: apagar `legacy/`, `dev.sh` e `start.sh`.
+Todas as telas do app antigo existem na versão nova. O que ainda falta são
+recursos dentro delas (as linhas "Falta" acima). Quando acabarem: apagar
+`legacy/`, `dev.sh` e `start.sh`.
 
 ## Como portar uma tela
 

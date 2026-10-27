@@ -8,6 +8,7 @@ import {
 } from '@kubernetes/client-node'
 import type { Batch, DeploymentRow, StatusClass, WatchOptions } from '@shared/api'
 import { errorMessage } from './errors'
+import { millis } from './meta'
 import { resourcePath, watchResource } from './watch'
 
 /**
@@ -68,8 +69,6 @@ export function labelSelectorString(sel: V1LabelSelector | undefined): string {
   return parts.join(',')
 }
 
-const time = (d: Date | string | undefined) => (d ? new Date(d).getTime() : 0)
-
 export function toDeploymentRow(d: V1Deployment): DeploymentRow {
   const { status, statusClass } = deploymentStatus(d)
   const containers = d.spec?.template?.spec?.containers ?? []
@@ -83,7 +82,7 @@ export function toDeploymentRow(d: V1Deployment): DeploymentRow {
     ready: d.status?.readyReplicas ?? 0,
     upToDate: d.status?.updatedReplicas ?? 0,
     available: d.status?.availableReplicas ?? 0,
-    created: time(d.metadata?.creationTimestamp),
+    created: millis(d.metadata?.creationTimestamp),
     images: containers.map((c) => c.image ?? ''),
     strategy: d.spec?.strategy?.type ?? 'RollingUpdate',
     paused: d.spec?.paused ?? false,
@@ -95,7 +94,7 @@ export function toDeploymentRow(d: V1Deployment): DeploymentRow {
       status: c.status,
       reason: c.reason ?? '',
       message: c.message ?? '',
-      lastTransition: time(c.lastTransitionTime),
+      lastTransition: millis(c.lastTransitionTime),
     })),
     containers: containers.map((c) => ({
       name: c.name,

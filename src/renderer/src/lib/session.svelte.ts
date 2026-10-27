@@ -1,5 +1,25 @@
 import type { KubeContext } from '@shared/api'
 
+// Namespace escolhido por contexto, como o app antigo fazia. Fica nas
+// preferências do main (não no localStorage, que pode perder a última
+// gravação). Se falhar, cai no namespace do kubeconfig.
+const nsKey = (context: string) => `namespace:${context}`
+
+async function loadNamespace(context: string): Promise<string | null> {
+  try {
+    const v = await window.kube.getPref(nsKey(context))
+    return typeof v === 'string' ? v : null
+  } catch {
+    return null
+  }
+}
+
+export function saveNamespace(context: string, namespace: string): void {
+  window.kube.setPref(nsKey(context), namespace).catch(() => {
+    // sem gravar, sem lembrança: não vale interromper o usuário por isso
+  })
+}
+
 // Estado da conexão, compartilhado pelas telas. Substitui as variáveis
 // globais soltas no topo do renderer.js antigo.
 
@@ -30,9 +50,12 @@ class Session {
 
   async connect(name: string): Promise<void> {
     this.namespaces = await window.kube.connect(name)
-    const preferred = this.contexts.find((c) => c.name === name)?.namespace ?? 'default'
-    // Sem permissão para listar namespaces a lista vem vazia: fica o do contexto
-    this.namespace = this.namespaces.length === 0 || this.namespaces.includes(preferred) ? preferred : ''
+    // Vale "" (todos) ou um namespace que existe. Sem permissão para listar
+    // namespaces a lista vem vazia, e aí qualquer nome vale
+    const usable = (ns: string) => ns === '' || this.namespaces.length === 0 || this.namespaces.includes(ns)
+    const remembered = await loadNamespace(name)
+    const fromContext = this.contexts.find((c) => c.name === name)?.namespace ?? 'default'
+    this.namespace = remembered !== null && usable(remembered) ? remembered : usable(fromContext) ? fromContext : ''
     this.context = name
   }
 
