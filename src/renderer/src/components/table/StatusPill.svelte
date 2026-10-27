@@ -1,16 +1,41 @@
 <script lang="ts">
   import type { StatusClass } from '@shared/api'
 
+  // Kit de marca: status sempre com ícone + texto, nunca só a cor. O ícone
+  // segue a classe (ok, pendente, falha, desconhecido); o texto é o motivo
+  // exato do Kubernetes.
+
   let { status, statusClass }: { status: string; statusClass: StatusClass } = $props()
+
+  const kind = $derived(
+    statusClass === 'running' || statusClass === 'succeeded' ? 'ok' : statusClass === 'pending' ? 'pend' : statusClass === 'failed' ? 'fail' : 'unk',
+  )
 </script>
 
-<span class="pill {statusClass}">{status}</span>
+<span class="badge {kind}">
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    {#if kind === 'ok'}
+      <path d="M3 8.5l3 3 7-7" />
+    {:else if kind === 'pend'}
+      <circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" />
+    {:else if kind === 'fail'}
+      <path d="M4 4l8 8M12 4l-8 8" />
+    {:else}
+      <circle cx="8" cy="8" r="6" /><path d="M6.5 6.2a1.6 1.6 0 113 .8c-.6.4-1.5.8-1.5 1.7M8 11.3v.2" />
+    {/if}
+  </svg>
+  {status}
+</span>
 
 <style>
-  .pill { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; white-space: nowrap; }
-  .running { background: rgba(74, 222, 128, .15); color: var(--ok); }
-  .succeeded { background: rgba(167, 139, 250, .15); color: var(--done); }
-  .pending { background: rgba(251, 191, 36, .15); color: var(--warn); }
-  .failed { background: rgba(239, 68, 68, .15); color: var(--err); }
-  .unknown { background: var(--surface-2); color: var(--muted); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 10px 2px 8px; border-radius: 999px;
+    font-family: var(--sans); font-size: 12px; font-weight: 500; line-height: 1.5; white-space: nowrap;
+  }
+  svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .ok { background: var(--ok-bg); color: var(--ok); }
+  .pend { background: var(--pend-bg); color: var(--pend); }
+  .fail { background: var(--fail-bg); color: var(--fail); }
+  .unk { background: var(--unk-bg); color: var(--unk); }
 </style>

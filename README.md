@@ -116,6 +116,7 @@ Detalhes da arquitetura e do que falta portar em `REFACTOR_PLAN.md`.
 - **TypeScript**, **Svelte 5** e **electron-vite**
 - **@kubernetes/client-node**: cliente oficial do Kubernetes para Node.js
 - **xterm.js**: visualizador de logs
+- **IBM Plex Sans e Mono**: tipografia do kit de marca, empacotada no app
 - **Vitest**: testes
 
 ## 🚧 Roadmap

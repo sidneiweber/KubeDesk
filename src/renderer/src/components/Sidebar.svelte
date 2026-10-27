@@ -4,14 +4,14 @@
 
 <script lang="ts">
   import { session } from '../lib/session.svelte'
-  import logo from '../assets/logo.png'
+  import Logo from './Logo.svelte'
 
   let { section = $bindable() }: { section: Section } = $props()
 
   // `ready: false` = tela ainda não migrada do app antigo
   const groups: { title: string; items: { id: Section; label: string; ready: boolean }[] }[] = [
     {
-      title: 'Workload',
+      title: 'Workloads',
       items: [
         { id: 'pods', label: 'Pods', ready: true },
         { id: 'deployments', label: 'Deployments', ready: true },
@@ -30,14 +30,19 @@
 </script>
 
 <aside>
-  <header>
-    <div class="logo"><img src={logo} alt="" /><h2>KubeDesk</h2></div>
-    <div class="status"><span class="dot"></span><span class="ctx" title={session.context}>{session.context}</span></div>
+  <div class="brand"><Logo size={26} on="navy" /></div>
+
+  <div class="cluster">
+    <div class="grp">Cluster</div>
+    <div class="ctx" title={session.context}>
+      <span class="dot" aria-hidden="true"></span>
+      <span class="name">{session.context}</span>
+    </div>
     <button class="switch" onclick={() => session.disconnect()}>Trocar cluster</button>
-  </header>
+  </div>
 
   <label class="ns">
-    <span>Namespace</span>
+    <span class="grp">Namespace</span>
     {#if session.namespaces.length > 0}
       <select bind:value={session.namespace}>
         <option value="">Todos</option>
@@ -54,7 +59,7 @@
 
   <nav aria-label="Seções">
     {#each groups as g (g.title)}
-      <h3>{g.title}</h3>
+      <div class="grp">{g.title}</div>
       <ul>
         {#each g.items as item (item.id)}
           <li>
@@ -73,33 +78,45 @@
 
 <style>
   aside {
-    width: 240px; flex-shrink: 0;
-    display: flex; flex-direction: column; gap: 16px;
-    background: var(--surface); border-right: 1px solid var(--border);
-    padding: 18px 14px;
+    width: 232px; flex-shrink: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 18px;
+    background: var(--side-bg); color: var(--side-text);
+    padding: 20px 14px;
   }
-  header { display: flex; flex-direction: column; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-  .logo { display: flex; align-items: center; gap: 10px; }
-  .logo img { width: 28px; filter: drop-shadow(0 2px 4px rgba(74, 158, 255, .3)); }
-  h2 { color: var(--accent); font-size: 19px; font-weight: 600; }
+  .brand { padding: 0 8px 4px; }
 
-  .status { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ok); box-shadow: 0 0 8px rgba(74, 222, 128, .5); }
-  .ctx { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .switch { font-size: 12px; padding: 4px 8px; align-self: flex-start; }
+  /* Rótulo de grupo do kit: Mono 11, maiúsculo */
+  .grp { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--side-muted); padding: 0 10px 6px; }
 
-  .ns { flex-direction: column; align-items: stretch; gap: 6px; font-size: 12px; }
+  .cluster { display: flex; flex-direction: column; }
+  .ctx { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 10px; color: #fff; font-family: var(--mono); font-size: 13px; }
+  .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #3FD07F; box-shadow: 0 0 0 3px rgba(63, 208, 127, .2); }
 
-  h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin: 10px 0 6px 8px; }
+  /* Controles sobre navy */
+  aside button.switch, aside select, aside input {
+    background: var(--side-hover); border-color: #1E4D8F; color: #fff;
+  }
+  .switch { align-self: flex-start; margin: 10px 10px 0; height: 28px; font-size: 12px; }
+  aside button.switch:hover:not(:disabled) { border-color: var(--ciano-claro); color: #fff; }
+  aside select:focus, aside input:focus { border-color: var(--ciano-claro); box-shadow: 0 0 0 3px rgba(79, 195, 247, .2); }
+  aside input::placeholder { color: var(--side-muted); }
+
+  .ns { flex-direction: column; align-items: stretch; gap: 0; color: inherit; }
+  .ns select, .ns input { margin: 0 10px; width: auto; }
+
+  nav { display: flex; flex-direction: column; gap: 2px; }
+  nav .grp { padding-top: 12px; }
   ul { list-style: none; display: flex; flex-direction: column; gap: 2px; }
   nav button {
     all: unset; box-sizing: border-box; width: 100%;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 7px 10px; border-radius: 6px; cursor: pointer;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    font-size: 14px; color: var(--side-text);
   }
-  nav button:hover:not(:disabled) { background: var(--surface-2); }
-  nav button.active { background: rgba(74, 158, 255, .15); color: var(--accent); }
-  nav button:disabled { color: var(--muted); cursor: default; }
-  nav button:focus-visible { outline: 2px solid var(--accent); }
-  .soon { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; }
+  nav button:hover:not(:disabled) { background: var(--side-hover); color: #fff; }
+  nav button.active { background: var(--azul); color: #fff; font-weight: 500; }
+  nav button:disabled { color: #6F86A6; cursor: default; }
+  nav button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .soon { font-family: var(--mono); font-size: 10px; color: #6F86A6; border: 1px solid #22477F; border-radius: 999px; padding: 0 7px; }
 </style>

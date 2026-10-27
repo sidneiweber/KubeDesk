@@ -41,6 +41,6 @@
 
 <style>
   .muted { color: var(--muted); }
-  .warn { color: var(--warn); }
+  .warn { color: var(--pend); font-weight: 500; }
   code { font-family: var(--mono); font-size: 12px; }
 </style>

@@ -22,11 +22,11 @@
     { key: 'name', label: 'Nome', sort: (p) => p.name, text: (p) => p.name },
     ...(namespace === '' ? [{ key: 'namespace', label: 'Namespace', sort: (p: PodRow) => p.namespace, text: (p: PodRow) => p.namespace }] : []),
     { key: 'status', label: 'Status', sort: (p) => p.status, cell: status },
-    { key: 'ready', label: 'Ready', sort: (p) => readyFraction(p.ready), text: (p) => p.ready, mono: true },
-    { key: 'restarts', label: 'Restarts', sort: (p) => p.restarts, cell: restarts, mono: true },
+    { key: 'ready', label: 'Ready', sort: (p) => readyFraction(p.ready), text: (p) => p.ready },
+    { key: 'restarts', label: 'Restarts', sort: (p) => p.restarts, cell: restarts },
     { key: 'node', label: 'Node', sort: (p) => p.node, text: (p) => p.node || '-', muted: true },
     // Idade crescente = mais novo primeiro
-    { key: 'age', label: 'Idade', sort: (p) => (p.created ? -p.created : null), text: (p) => formatAge(p.created, now.value), mono: true },
+    { key: 'age', label: 'Idade', sort: (p) => (p.created ? -p.created : null), text: (p) => formatAge(p.created, now.value) },
   ])
 </script>
 
@@ -50,5 +50,5 @@
 </ResourceTable>
 
 <style>
-  .warn { color: var(--warn); }
+  .warn { color: var(--pend); font-weight: 500; }
 </style>

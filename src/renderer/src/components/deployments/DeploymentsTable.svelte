@@ -21,10 +21,10 @@
       : []),
     { key: 'status', label: 'Status', sort: (d) => d.status, cell: status },
     // Fração de prontos, como o Ready dos pods; desired 0 fica no fim
-    { key: 'ready', label: 'Ready', sort: (d) => (d.desired ? d.ready / d.desired : null), text: (d) => `${d.ready}/${d.desired}`, mono: true },
-    { key: 'upToDate', label: 'Up-to-date', sort: (d) => d.upToDate, text: (d) => String(d.upToDate), mono: true },
-    { key: 'available', label: 'Available', sort: (d) => d.available, text: (d) => String(d.available), mono: true },
-    { key: 'age', label: 'Idade', sort: (d) => (d.created ? -d.created : null), text: (d) => formatAge(d.created, now.value), mono: true },
+    { key: 'ready', label: 'Ready', sort: (d) => (d.desired ? d.ready / d.desired : null), text: (d) => `${d.ready}/${d.desired}` },
+    { key: 'upToDate', label: 'Up-to-date', sort: (d) => d.upToDate, text: (d) => String(d.upToDate) },
+    { key: 'available', label: 'Available', sort: (d) => d.available, text: (d) => String(d.available) },
+    { key: 'age', label: 'Idade', sort: (d) => (d.created ? -d.created : null), text: (d) => formatAge(d.created, now.value) },
     { key: 'images', label: 'Imagens', sort: (d) => d.images.join(','), cell: images },
   ])
 </script>

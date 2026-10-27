@@ -3,6 +3,7 @@
   import { formatAge } from '../../lib/formatAge'
   import { now } from '../../lib/now.svelte'
   import StatusPill from '../table/StatusPill.svelte'
+  import PageHeader from '../PageHeader.svelte'
   import PodsTable from '../pods/PodsTable.svelte'
   import LogViewer from '../logs/LogViewer.svelte'
 
@@ -23,17 +24,20 @@
 </script>
 
 <div class="page">
-  <header>
+  <div class="head">
     <button class="back" onclick={onback}>← Deployments</button>
-    {#if deployment}
-      <h1>{deployment.name}</h1>
-      <StatusPill status={deployment.status} statusClass={deployment.statusClass} />
-      <div class="actions">
-        <button onclick={() => onscale(deployment)}>Escalar</button>
-        <button onclick={() => onrestart(deployment)}>Reiniciar</button>
-      </div>
-    {/if}
-  </header>
+    <PageHeader title={deployment?.name ?? 'Deployment'} namespace={deployment?.namespace}>
+      {#snippet after()}
+        {#if deployment}<StatusPill status={deployment.status} statusClass={deployment.statusClass} />{/if}
+      {/snippet}
+      {#snippet actions()}
+        {#if deployment}
+          <button onclick={() => onscale(deployment)}>Escalar</button>
+          <button onclick={() => onrestart(deployment)}>Reiniciar</button>
+        {/if}
+      {/snippet}
+    </PageHeader>
+  </div>
 
   {#if !deployment}
     <p class="gone">{loading ? 'Carregando…' : 'Este deployment não existe mais no cluster.'}</p>
@@ -52,7 +56,7 @@
       </section>
 
       <section>
-        <h2>Condições</h2>
+        <h2 class="eyebrow">Condições</h2>
         {#if deployment.conditions.length === 0}
           <p class="muted">Nenhuma condição reportada.</p>
         {:else}
@@ -74,7 +78,7 @@
       </section>
 
       <section>
-        <h2>Containers</h2>
+        <h2 class="eyebrow">Containers</h2>
         <div class="containers">
           {#each deployment.containers as c (c.name)}
             <div class="container">
@@ -90,7 +94,7 @@
 
       {#if Object.keys(deployment.labels).length > 0}
         <section>
-          <h2>Labels</h2>
+          <h2 class="eyebrow">Labels</h2>
           <div class="labels">
             {#each Object.entries(deployment.labels) as [k, v] (k)}
               <code class="label">{k}={v}</code>
@@ -100,7 +104,7 @@
       {/if}
 
       <section class="pods">
-        <h2>Pods</h2>
+        <h2 class="eyebrow">Pods</h2>
         {#if deployment.selector}
           <div class="pods-table">
             <PodsTable namespace={deployment.namespace} labelSelector={deployment.selector}
@@ -124,41 +128,46 @@
 
 <style>
   .page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  header {
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  .head { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 20px 32px 18px; border-bottom: 1px solid var(--border); }
+  .head > :global(header) { align-self: stretch; }
+  .back { height: 28px; padding: 0 10px; font-size: 12px; }
+  .gone { padding: 40px; color: var(--muted); text-align: center; }
+
+  .content { flex: 1; min-height: 0; overflow: auto; padding: 24px 32px 32px; display: flex; flex-direction: column; gap: 28px; }
+  h2 { margin-bottom: 12px; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px 28px;
+    padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--head-bg);
   }
-  .back { font-size: 12px; }
-  h1 { font-size: 18px; font-weight: 600; user-select: text; }
-  .actions { margin-left: auto; display: flex; gap: 8px; }
-  .gone { padding: 32px; color: var(--muted); text-align: center; }
-
-  .content { flex: 1; min-height: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 22px; }
-  h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
-
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px 24px; }
-  .grid > div, .container > div { display: flex; flex-direction: column; gap: 3px; user-select: text; }
-  .k { font-size: 11px; color: var(--muted); }
+  .grid > div, .container > div { display: flex; flex-direction: column; gap: 3px; user-select: text; color: var(--text-2); }
+  .k { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .muted { color: var(--muted); }
-  .mono, code { font-family: var(--mono); font-size: 12px; }
-  code { word-break: break-all; }
+  .mono, code { font-family: var(--mono); font-size: 13px; }
+  code { word-break: break-all; color: var(--navy); }
 
-  table.small { width: 100%; border-collapse: collapse; }
-  .small th { text-align: left; font-weight: 500; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); }
-  .small td { padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; user-select: text; }
+  table.small { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .small tbody tr:last-child td { border-bottom: 0; }
+  .small th {
+    text-align: left; padding: 10px 16px; background: var(--head-bg); border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  }
+  .small td { padding: 9px 16px; border-bottom: 1px solid var(--border); vertical-align: top; user-select: text; color: var(--text-2); }
+  .small td:first-child { color: var(--navy); font-weight: 500; font-family: var(--mono); font-size: 13px; }
   .small .msg { white-space: normal; max-width: 520px; }
-  .ok { color: var(--ok); }
-  .bad { color: var(--err); }
+  .small td.ok { color: var(--ok); font-weight: 500; }
+  .small td.bad { color: var(--fail); font-weight: 500; }
 
   .containers { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-  .container { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .container { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
+  .container strong { font-family: var(--mono); font-size: 14px; color: var(--navy); }
 
   .labels { display: flex; flex-wrap: wrap; gap: 6px; }
-  .label { padding: 2px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
+  .label { padding: 3px 10px; border-radius: 999px; background: var(--gelo); border: 1px solid var(--border); font-size: 12px; }
 
   .pods { display: flex; flex-direction: column; }
-  .pods-table { height: 260px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .pods-table { height: 300px; display: flex; flex-direction: column; }
   .pods-table > :global(section) { flex: 1; }
-  .logs { height: 380px; display: flex; flex-direction: column; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .logs { height: 380px; display: flex; flex-direction: column; margin-top: 16px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .logs > :global(section) { flex: 1; border-top: 0; }
 </style>

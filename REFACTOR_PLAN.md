@@ -123,8 +123,22 @@ Toda tela de lista segue o caminho de Deployments:
 - `npm run dev` contra um cluster real (o minikube serve) antes de dar a tela
   como pronta.
 
+## Identidade visual
+
+O visual segue o kit de marca v1.0 (logo, cores, tipografia e o mock do app):
+
+- **Tokens** em `src/renderer/src/style.css`. Use os papéis (`--surface`,
+  `--text-2`, `--muted`, `--border`…) nos componentes, não os hex.
+- **Fontes**: IBM Plex Sans e Mono, empacotadas via `@fontsource` (o app
+  funciona offline; a CSP bloqueia o Google Fonts).
+- **Status** sempre com ícone + texto (`StatusPill`), nunca só a cor.
+- **Logo**: `components/Logo.svelte` (variantes `light`, `dark` e `navy`).
+- **Ícone do app**: `assets/icon.svg` é a fonte. Para regenerar os PNGs:
+  `magick -background none -density 384 assets/icon.svg -resize 1024x1024 assets/icon.png`
+  (idem para `icon-square.png` em 512 e `icons/NxN.png`). O electron-builder
+  gera o `.icns` e o `.ico` a partir de `assets/icon.png`.
+
 ## Pendências fora do código
 
-- `electron-builder.json` aponta para `assets/icon.icns`, `assets/icon.ico` e
-  `build/entitlements.mac.plist`, que não existem no repositório. O build de
-  Linux funciona; os de macOS e Windows vão falhar até esses arquivos existirem.
+- `electron-builder.json` aponta para `build/entitlements.mac.plist`, que não
+  existe no repositório. O build de macOS vai falhar até ele existir.

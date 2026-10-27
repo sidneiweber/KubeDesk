@@ -60,5 +60,5 @@
   .muted strong { color: var(--text); font-weight: 500; }
   .field { flex-direction: column; align-items: stretch; gap: 6px; }
   .field input { width: 120px; font-family: var(--mono); }
-  .warn { color: var(--warn); }
+  .warn { color: var(--pend); font-weight: 500; }
 </style>
