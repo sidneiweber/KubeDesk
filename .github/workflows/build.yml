@@ -21,7 +21,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '22'
         cache: 'npm'
 
     - name: Install dependencies
@@ -34,6 +34,9 @@ jobs:
         else
           echo "No tests configured, skipping..."
         fi
+
+    - name: Typecheck
+      run: npm run typecheck
 
     - name: Check build
       run: npm run pack
@@ -63,14 +66,14 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '22'
         cache: 'npm'
 
     - name: Install dependencies
       run: npm ci
 
     - name: Build application
-      run: npm run build
+      run: npm run dist
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

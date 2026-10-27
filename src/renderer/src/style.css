@@ -1,0 +1,67 @@
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-SemiBold.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('./assets/fonts/JetBrainsMono-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+/* Paleta do app antigo (legacy/src/renderer/styles.css) */
+:root {
+  --bg: #1a1a1a;
+  --surface: #2d2d2d;
+  --surface-2: #363636;
+  --surface-sunken: #141414;
+  --border: #404040;
+  --border-subtle: #262626;
+  --text: #ffffff;
+  --muted: #a0a0a0;
+  --accent: #4a9eff;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --err: #ef4444;
+  --err-text: #fca5a5;
+  --done: #a78bfa;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #app { height: 100%; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+select, input, button {
+  font: inherit;
+  color: inherit;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+}
+input[type='checkbox'] { padding: 0; accent-color: var(--accent); }
+
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled, select:disabled, input:disabled { opacity: .5; cursor: default; }
+
+button.primary { background: var(--accent); border-color: var(--accent); color: #0b1a2b; font-weight: 600; }
+button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+
+.error-box {
+  padding: 8px 12px;
+  border: 1px solid var(--err);
+  border-radius: 6px;
+  background: rgba(239, 68, 68, .12);
+  color: var(--err-text);
+  white-space: pre-wrap;
+  user-select: text;
+}

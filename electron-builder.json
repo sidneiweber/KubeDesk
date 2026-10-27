@@ -6,8 +6,8 @@
     "buildResources": "assets"
   },
   "files": [
-    "src/**/*",
-    "assets/**/*",
+    "out/**/*",
+    "assets/icon-square.png",
     "package.json"
   ],
   "mac": {
@@ -44,7 +44,9 @@
       }
     ],
     "icon": "assets/icon.ico",
-    "publisherName": "KubeDesk",
+    "signtoolOptions": {
+      "publisherName": "KubeDesk"
+    },
     "verifyUpdateCodeSignature": false
   },
   "linux": {
@@ -69,10 +71,12 @@
     "vendor": "KubeDesk",
     "description": "Ferramenta para gerenciar clusters Kubernetes",
     "desktop": {
-      "Name": "KubeDesk",
-      "Comment": "Kubernetes Management Tool",
-      "Icon": "kubedesk",
-      "Categories": "Development;System;"
+      "entry": {
+        "Name": "KubeDesk",
+        "Comment": "Kubernetes Management Tool",
+        "Icon": "kubedesk",
+        "Categories": "Development;System;"
+      }
     },
     "synopsis": "Kubernetes cluster management tool"
   },
