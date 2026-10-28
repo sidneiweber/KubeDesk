@@ -20,7 +20,7 @@
 <style>
   .labels { display: flex; flex-wrap: wrap; gap: 6px; }
   code {
-    padding: 3px 10px; border-radius: 999px; background: var(--gelo); border: 1px solid var(--border);
-    font-size: 12px; color: var(--navy); user-select: text;
+    padding: 2px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border);
+    font-size: 12px; user-select: text;
   }
 </style>

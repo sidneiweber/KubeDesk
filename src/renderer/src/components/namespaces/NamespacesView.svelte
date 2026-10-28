@@ -29,7 +29,7 @@
     { key: 'name', label: 'Nome', sort: (n) => n.name, text: (n) => n.name },
     { key: 'status', label: 'Status', sort: (n) => n.status, cell: status },
     { key: 'labels', label: 'Labels', sort: (n) => Object.keys(n.labels).length, cell: labels },
-    { key: 'age', label: 'Idade', sort: (n) => (n.created ? -n.created : null), text: (n) => formatAge(n.created, now.value) },
+    { key: 'age', label: 'Idade', sort: (n) => (n.created ? -n.created : null), text: (n) => formatAge(n.created, now.value), mono: true },
   ]
 </script>
 
@@ -41,7 +41,7 @@
   </span>
 {/snippet}
 
-<ListPage title="Namespaces" namespace="">
+<ListPage>
   <ResourceTable
     id="namespaces"
     {menu}

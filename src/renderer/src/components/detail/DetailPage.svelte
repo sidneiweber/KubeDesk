@@ -1,16 +1,15 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
-  import PageHeader from '../PageHeader.svelte'
 
-  // Moldura das páginas de detalhe: voltar, cabeçalho e conteúdo rolável.
-  // O recurso vem da lista ao vivo; se sumir do cluster, a página avisa.
+  // Moldura das páginas de detalhe: voltar, nome, status e ações numa linha,
+  // e o conteúdo rolável. O recurso vem da lista ao vivo; se sumir do
+  // cluster, a página avisa.
 
-  let { back, onback, title, namespace, found, loading, after, actions, children }: {
+  let { back, onback, title, found, loading, after, actions, children }: {
     /** Texto do botão de voltar, ex.: "Deployments". */
     back: string
     onback: () => void
     title: string
-    namespace?: string
     /** false = o recurso não está (mais) na lista. */
     found: boolean
     loading: boolean
@@ -21,10 +20,12 @@
 </script>
 
 <div class="page">
-  <div class="head">
+  <header>
     <button class="back" onclick={onback}>← {back}</button>
-    <PageHeader {title} {namespace} {after} {actions} />
-  </div>
+    <h1>{title}</h1>
+    {@render after?.()}
+    {#if actions}<div class="actions">{@render actions()}</div>{/if}
+  </header>
 
   {#if !found}
     <p class="gone">{loading ? 'Carregando…' : 'Este recurso não existe mais no cluster.'}</p>
@@ -34,10 +35,14 @@
 </div>
 
 <style>
-  .page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .head { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 20px 32px 18px; border-bottom: 1px solid var(--border); }
-  .head > :global(header) { align-self: stretch; }
-  .back { height: 28px; padding: 0 10px; font-size: 12px; }
-  .gone { padding: 40px; color: var(--muted); text-align: center; }
-  .content { flex: 1; min-height: 0; overflow: auto; padding: 24px 32px 32px; display: flex; flex-direction: column; gap: 28px; }
+  .page { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .back { font-size: 12px; }
+  h1 { font-size: 18px; font-weight: 600; user-select: text; }
+  .actions { margin-left: auto; display: flex; gap: 8px; }
+  .gone { padding: 32px; color: var(--muted); text-align: center; }
+  .content { flex: 1; min-height: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 22px; }
 </style>

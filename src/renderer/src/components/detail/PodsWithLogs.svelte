@@ -36,9 +36,9 @@
 </Section>
 
 <style>
-  .table { height: 300px; display: flex; flex-direction: column; }
+  .table { height: 260px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .table > :global(section) { flex: 1; }
-  .logs { height: 380px; display: flex; flex-direction: column; margin-top: 16px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .logs { height: 380px; display: flex; flex-direction: column; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .logs > :global(section) { flex: 1; border-top: 0; }
   .muted { color: var(--muted); }
 </style>

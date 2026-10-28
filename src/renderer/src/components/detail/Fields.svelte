@@ -2,7 +2,7 @@
   export interface Field {
     label: string
     value: string
-    /** Valor técnico (IP, seletor, imagem): Mono em Navy. */
+    /** Valor técnico (IP, seletor, imagem): fonte monoespaçada. */
     code?: boolean
   }
 </script>
@@ -23,12 +23,9 @@
 </dl>
 
 <style>
-  dl {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px 28px;
-    padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--head-bg);
-  }
+  dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px 24px; }
   div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  dt { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  dd { color: var(--text-2); user-select: text; overflow-wrap: anywhere; }
-  .code { font-family: var(--mono); font-size: 13px; color: var(--navy); }
+  dt { font-size: 11px; color: var(--muted); }
+  dd { user-select: text; overflow-wrap: anywhere; }
+  .code { font-family: var(--mono); font-size: 12px; }
 </style>

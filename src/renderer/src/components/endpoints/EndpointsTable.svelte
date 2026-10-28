@@ -22,8 +22,8 @@
     <tbody>
       {#each endpoints as e (e.address)}
         <tr>
-          <td>{e.address}</td>
-          <td>{e.ports.join(', ') || '-'}</td>
+          <td class="mono">{e.address}</td>
+          <td class="mono">{e.ports.join(', ') || '-'}</td>
           <td><StatusPill {...states[e.state]} /></td>
           <td>{e.pod || '-'}</td>
           <td>{e.node || '-'}</td>

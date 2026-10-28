@@ -149,14 +149,17 @@ Toda tela de lista segue o caminho de Deployments:
 
 ## Identidade visual
 
-O visual segue o kit de marca v1.0 (logo, cores, tipografia e o mock do app):
+O visual é o **tema escuro do layout original** (Inter e JetBrains Mono,
+paleta do commit `7a227af`). Do kit de marca ficaram só o
+**logo** (`components/Logo.svelte`, cubo + wordmark) e o **ícone do app**:
+o tema claro do kit foi testado e descartado em favor do layout antigo.
 
-- **Tokens** em `src/renderer/src/style.css`. Use os papéis (`--surface`,
-  `--text-2`, `--muted`, `--border`…) nos componentes, não os hex.
-- **Fontes**: IBM Plex Sans e Mono, empacotadas via `@fontsource` (o app
-  funciona offline; a CSP bloqueia o Google Fonts).
-- **Status** sempre com ícone + texto (`StatusPill`), nunca só a cor.
-- **Logo**: `components/Logo.svelte` (variantes `light`, `dark` e `navy`).
+- **Tokens** em `src/renderer/src/style.css`. Componentes usam só os papéis
+  (`--surface`, `--muted`, `--border`, `--ok`/`--ok-bg`…), nunca hex; as
+  cores da marca aparecem apenas dentro de `Logo.svelte`.
+- **Fontes** empacotadas em `src/renderer/src/assets/fonts` (o app funciona
+  offline; a CSP bloqueia fontes externas).
+- **Status** com ícone + texto (`StatusPill`), para não depender só da cor.
 - **Ícone do app**: `assets/icon.svg` é a fonte. Para regenerar os PNGs:
   `magick -background none -density 384 assets/icon.svg -resize 1024x1024 assets/icon.png`
   (idem para `icon-square.png` em 512 e `icons/NxN.png`). O electron-builder

@@ -17,14 +17,14 @@
   .toast {
     display: flex; align-items: flex-start; gap: 10px;
     padding: 10px 12px; border-radius: 8px;
-    background: var(--branco); border: 1px solid var(--border); border-left-width: 4px;
-    box-shadow: 0 12px 32px rgba(11, 42, 91, .18);
+    background: var(--surface-2); border: 1px solid var(--border); border-left-width: 4px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
     user-select: text;
   }
   .toast span { flex: 1; }
   .success { border-left-color: var(--ok); }
   .error { border-left-color: var(--fail); }
   button { all: unset; cursor: pointer; color: var(--muted); padding: 0 2px; }
-  button:hover { color: var(--azul); }
-  button:focus-visible { outline: 2px solid var(--accent); }
+  button:hover { color: var(--text); }
+  button:focus-visible { outline: 2px solid var(--focus); }
 </style>

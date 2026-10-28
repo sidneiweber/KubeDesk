@@ -50,15 +50,14 @@
 
 <style>
   .picker { position: relative; }
-  .picker > button { height: 36px; }
   .pop {
     /* Abre para a esquerda: o botão fica na borda direita da barra */
     position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 200px;
     display: flex; flex-direction: column; padding: 8px;
-    background: var(--branco); border: 1px solid var(--border); border-radius: 10px;
-    box-shadow: 0 12px 32px rgba(11, 42, 91, .18);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
   }
   label { padding: 7px 8px; border-radius: 6px; color: var(--text); cursor: pointer; white-space: nowrap; }
-  label:hover { background: var(--row-hover); }
+  label:hover { background: rgba(74, 158, 255, .12); }
   label.fixed { color: var(--muted); cursor: default; }
 </style>

@@ -11,5 +11,5 @@
 
 <style>
   section { display: flex; flex-direction: column; }
-  h2 { margin-bottom: 12px; }
+  h2 { font-size: 13px; letter-spacing: .05em; margin-bottom: 10px; }
 </style>

@@ -45,7 +45,5 @@
 
 <style>
   .warn { color: var(--pend); font-weight: 500; }
-  code { font-family: var(--mono); font-size: 13px; color: var(--navy); }
-  .danger { background: var(--fail); border-color: var(--fail); color: #fff; }
-  .danger:hover:not(:disabled) { background: #A3202C; border-color: #A3202C; color: #fff; }
+  code { font-family: var(--mono); font-size: 12px; }
 </style>

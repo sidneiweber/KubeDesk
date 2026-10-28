@@ -29,7 +29,7 @@
   const endpoints = $derived(groupEndpointSlices(slices.rows)[0]?.endpoints ?? [])
 </script>
 
-<DetailPage back="Services" {onback} title={service?.name ?? 'Service'} namespace={service?.namespace} found={!!service} {loading}>
+<DetailPage back="Services" {onback} title={service?.name ?? 'Service'} found={!!service} {loading}>
   {#snippet actions()}
     {#if service}<button onclick={() => openYaml('services', service.namespace, service.name)}>YAML</button>{/if}
   {/snippet}
@@ -51,7 +51,7 @@
           <thead><tr><th>Nome</th><th>Porta</th><th>Target port</th><th>Node port</th><th>Protocolo</th></tr></thead>
           <tbody>
             {#each service.portDetails as p (`${p.port}/${p.protocol}`)}
-              <tr><td>{p.name || '-'}</td><td>{p.port}</td><td>{p.targetPort}</td><td>{p.nodePort ?? '-'}</td><td>{p.protocol}</td></tr>
+              <tr><td>{p.name || '-'}</td><td class="mono">{p.port}</td><td class="mono">{p.targetPort}</td><td class="mono">{p.nodePort ?? '-'}</td><td>{p.protocol}</td></tr>
             {/each}
           </tbody>
         </table>

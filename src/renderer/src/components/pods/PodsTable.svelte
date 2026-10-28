@@ -38,15 +38,15 @@
     { key: 'name', label: 'Nome', sort: (p) => p.name, text: (p) => p.name },
     ...(namespace === '' ? [{ key: 'namespace', label: 'Namespace', sort: (p: PodRow) => p.namespace, text: (p: PodRow) => p.namespace }] : []),
     { key: 'status', label: 'Status', sort: (p) => p.status, cell: status },
-    { key: 'ready', label: 'Ready', sort: (p) => readyFraction(p.ready), text: (p) => p.ready },
-    { key: 'restarts', label: 'Restarts', sort: (p) => p.restarts, cell: restarts },
-    { key: 'cpu', label: 'CPU', sort: (p) => metrics.of(p.namespace, p.name)?.cpu ?? null, cell: cpu },
-    { key: 'memory', label: 'Memória', sort: (p) => metrics.of(p.namespace, p.name)?.memory ?? null, cell: memory },
+    { key: 'ready', label: 'Ready', sort: (p) => readyFraction(p.ready), text: (p) => p.ready, mono: true },
+    { key: 'restarts', label: 'Restarts', sort: (p) => p.restarts, cell: restarts, mono: true },
+    { key: 'cpu', label: 'CPU', sort: (p) => metrics.of(p.namespace, p.name)?.cpu ?? null, cell: cpu, mono: true },
+    { key: 'memory', label: 'Memória', sort: (p) => metrics.of(p.namespace, p.name)?.memory ?? null, cell: memory, mono: true },
     { key: 'node', label: 'Node', sort: (p) => p.node, text: (p) => p.node || '-', muted: true },
-    { key: 'ip', label: 'IP', sort: (p) => p.ip, text: (p) => p.ip || '-', muted: true, hidden: true },
+    { key: 'ip', label: 'IP', sort: (p) => p.ip, text: (p) => p.ip || '-', muted: true, hidden: true, mono: true },
     { key: 'owner', label: 'Controlado por', sort: (p) => p.owner, text: (p) => p.owner || '-', muted: true, hidden: true },
     // Idade crescente = mais novo primeiro
-    { key: 'age', label: 'Idade', sort: (p) => (p.created ? -p.created : null), text: (p) => formatAge(p.created, now.value) },
+    { key: 'age', label: 'Idade', sort: (p) => (p.created ? -p.created : null), text: (p) => formatAge(p.created, now.value), mono: true },
   ])
 </script>
 

@@ -31,10 +31,10 @@
       ? [{ key: 'namespace', label: 'Namespace', sort: (s: ServiceRow) => s.namespace, text: (s: ServiceRow) => s.namespace }]
       : []),
     { key: 'type', label: 'Tipo', sort: (s) => s.type, text: (s) => s.type },
-    { key: 'clusterIP', label: 'Cluster IP', sort: (s) => s.clusterIP, text: (s) => s.clusterIP },
-    { key: 'externalIP', label: 'External IP', sort: (s) => s.externalIP, cell: external },
-    { key: 'ports', label: 'Portas', sort: (s) => s.ports.join(','), text: (s) => s.ports.join(',') || '<none>' },
-    { key: 'age', label: 'Idade', sort: (s) => (s.created ? -s.created : null), text: (s) => formatAge(s.created, now.value) },
+    { key: 'clusterIP', label: 'Cluster IP', sort: (s) => s.clusterIP, text: (s) => s.clusterIP, mono: true },
+    { key: 'externalIP', label: 'External IP', sort: (s) => s.externalIP, cell: external, mono: true },
+    { key: 'ports', label: 'Portas', sort: (s) => s.ports.join(','), text: (s) => s.ports.join(',') || '<none>', mono: true },
+    { key: 'age', label: 'Idade', sort: (s) => (s.created ? -s.created : null), text: (s) => formatAge(s.created, now.value), mono: true },
   ])
 </script>
 
@@ -45,7 +45,7 @@
 {#if openUid}
   <ServiceDetails service={opened} loading={services.loading} onback={() => (openUid = null)} />
 {:else}
-  <ListPage title="Services">
+  <ListPage>
     <ResourceTable
       id="services"
       {menu}

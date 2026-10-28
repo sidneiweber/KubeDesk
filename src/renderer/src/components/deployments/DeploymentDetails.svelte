@@ -23,7 +23,7 @@
     Object.entries(r).map(([k, v]) => `${k}: ${v}`).join(', ') || '-'
 </script>
 
-<DetailPage back="Deployments" {onback} title={deployment?.name ?? 'Deployment'} namespace={deployment?.namespace} found={!!deployment} {loading}>
+<DetailPage back="Deployments" {onback} title={deployment?.name ?? 'Deployment'} found={!!deployment} {loading}>
   {#snippet after()}
     {#if deployment}<StatusPill status={deployment.status} statusClass={deployment.statusClass} />{/if}
   {/snippet}
@@ -58,7 +58,7 @@
                 <td class:ok={c.status === 'True'} class:bad={c.status === 'False'}>{c.status}</td>
                 <td class="text">{c.reason || '-'}</td>
                 <td class="text">{c.message || '-'}</td>
-                <td>{c.lastTransition ? formatAge(c.lastTransition, now.value) : '-'}</td>
+                <td class="mono">{c.lastTransition ? formatAge(c.lastTransition, now.value) : '-'}</td>
               </tr>
             {/each}
           </tbody>
@@ -92,8 +92,7 @@
 
 <style>
   .muted { color: var(--muted); }
-  .containers { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
-  .container { display: flex; flex-direction: column; gap: 10px; }
-  .container strong { font-family: var(--mono); font-size: 14px; color: var(--navy); }
-  .container :global(dl) { grid-template-columns: 1fr 1fr; padding: 16px; }
+  .containers { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .container { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .container :global(dl) { grid-template-columns: 1fr; gap: 8px; }
 </style>

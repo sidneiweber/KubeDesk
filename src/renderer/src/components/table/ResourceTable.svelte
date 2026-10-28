@@ -10,6 +10,8 @@
     /** Texto da célula; ignorado quando a coluna tem `cell`. */
     text?: (row: R) => string
     cell?: Snippet<[R]>
+    /** Números, idades, IPs: fonte monoespaçada. */
+    mono?: boolean
     muted?: boolean
     /** Começa escondida (o usuário pode mostrar pelo botão Colunas). */
     hidden?: boolean
@@ -134,10 +136,7 @@
 
 <section>
   <div class="toolbar">
-    <label class="search">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></svg>
-      <input type="search" placeholder="Filtrar por nome" bind:value={filter} aria-label="Filtrar {noun}" />
-    </label>
+    <input class="search" type="search" placeholder="Filtrar" bind:value={filter} aria-label="Filtrar {noun}" />
     <span class="count" aria-live="polite">
       {#if loading}
         Carregando…
@@ -180,7 +179,7 @@
               ondblclick={() => onactivate?.(row)} onkeydown={(e) => onRowKey(e, row)}
               oncontextmenu={(e) => onRowMenu(e, row)}>
             {#each shown as c (c.key)}
-              <td class:muted={c.muted}>
+              <td class:mono={c.mono} class:muted={c.muted}>
                 {#if c.cell}{@render c.cell(row)}{:else}{c.text?.(row) ?? ''}{/if}
               </td>
             {/each}
@@ -201,50 +200,33 @@
 {/if}
 
 <style>
-  /* min-width 0: sem isso a tabela larga empurra a página em vez de rolar na caixa */
-  section { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 14px; }
+  /* min-width 0: sem isso a tabela larga empurra a página em vez de rolar */
+  section { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; }
+  .search { width: 320px; }
+  .count { color: var(--muted); }
   .right { margin-left: auto; }
-  .toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-  .count { color: var(--muted); font-size: 13px; }
+  .error-box { margin: 0 16px 10px; }
 
-  /* Busca do kit: ícone dentro da borda, anel azul no foco */
-  .search {
-    display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px;
-    border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--branco);
-  }
-  .search:focus-within { border-color: var(--azul); box-shadow: 0 0 0 3px rgba(11, 107, 181, .15); }
-  .search input { border: 0; height: 100%; padding: 0; width: 240px; background: transparent; box-shadow: none; }
-
-  .scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .scroll { flex: 1; min-height: 0; overflow: auto; }
   table { width: 100%; border-collapse: collapse; }
-  thead th {
-    position: sticky; top: 0; z-index: 1; text-align: left;
-    background: var(--head-bg); border-bottom: 1px solid var(--border);
-  }
-  /* Cabeçalho do kit: Mono 11, maiúsculo, espaçado, cor Aço */
-  th button, th .plain {
-    all: unset; display: flex; align-items: center; gap: 4px; padding: 10px 16px; white-space: nowrap;
-    font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
-  }
+  thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: 1px solid var(--border); text-align: left; }
+  th button, th .plain { all: unset; display: flex; gap: 4px; padding: 8px 12px; font-weight: 500; color: var(--muted); white-space: nowrap; }
   th button { cursor: pointer; }
-  th button:hover, th[aria-sort='ascending'] button, th[aria-sort='descending'] button { color: var(--navy); }
-  th button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-  .arrow { font-size: 8px; }
+  th button:hover, th[aria-sort='ascending'] button, th[aria-sort='descending'] button { color: var(--text); }
+  th button:focus-visible { outline: 2px solid var(--focus); }
+  .arrow { font-size: 9px; align-self: center; }
 
-  /* Células em Mono (nomes de recurso), primeira coluna em Navy */
-  td {
-    padding: 9px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; user-select: text;
-    font-family: var(--mono); font-size: 13px; color: var(--text-2);
-  }
-  tbody tr:last-child td { border-bottom: 0; }
-  td:first-child { color: var(--navy); font-weight: 500; }
+  td { padding: 6px 12px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; user-select: text; }
+  td:first-child { font-weight: 500; }
   tbody tr:hover { background: var(--row-hover); }
   tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
   tr.selected, tr.selected:hover { background: var(--row-selected); }
+  .mono { font-family: var(--mono); font-size: 12px; }
   .muted { color: var(--muted); }
-  .empty { text-align: center; color: var(--muted); padding: 40px; font-family: var(--sans); font-weight: 400; }
+  .empty { text-align: center; color: var(--muted); padding: 32px; font-weight: 400; }
   .actions { text-align: right; user-select: none; }
-  .actions :global(button) { height: 28px; padding: 0 10px; font-family: var(--sans); font-size: 12px; margin-left: 4px; }
+  .actions :global(button) { padding: 2px 10px; font-size: 12px; margin-left: 4px; }
 
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>

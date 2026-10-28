@@ -31,9 +31,9 @@
       ? [{ key: 'namespace', label: 'Namespace', sort: (g: ServiceEndpoints) => g.namespace, text: (g: ServiceEndpoints) => g.namespace }]
       : []),
     { key: 'status', label: 'Status', sort: (g) => g.status, cell: status },
-    { key: 'ready', label: 'Endpoints prontos', sort: (g) => g.ready.length, cell: ready },
-    { key: 'notReady', label: 'Não prontos', sort: (g) => g.notReady, cell: notReady },
-    { key: 'age', label: 'Idade', sort: (g) => (g.created ? -g.created : null), text: (g) => formatAge(g.created, now.value) },
+    { key: 'ready', label: 'Endpoints prontos', sort: (g) => g.ready.length, cell: ready, mono: true },
+    { key: 'notReady', label: 'Não prontos', sort: (g) => g.notReady, cell: notReady, mono: true },
+    { key: 'age', label: 'Idade', sort: (g) => (g.created ? -g.created : null), text: (g) => formatAge(g.created, now.value), mono: true },
   ])
 </script>
 
@@ -46,7 +46,7 @@
 {#snippet notReady(g: ServiceEndpoints)}<span class:warn={g.notReady > 0}>{g.notReady}</span>{/snippet}
 
 {#if openUid}
-  <DetailPage back="Endpoints" onback={() => (openUid = null)} title={opened?.service ?? 'Endpoints'} namespace={opened?.namespace}
+  <DetailPage back="Endpoints" onback={() => (openUid = null)} title={opened?.service ?? 'Endpoints'}
               found={!!opened} loading={slices.loading}>
     {#snippet after()}
       {#if opened}<StatusPill status={opened.status} statusClass={opened.statusClass} />{/if}
@@ -64,7 +64,7 @@
     {/if}
   </DetailPage>
 {:else}
-  <ListPage title="Endpoints">
+  <ListPage>
     <ResourceTable
       id="endpoints"
       menu={(g) => [{ label: 'Detalhes', action: () => (openUid = g.uid) }]}
@@ -86,6 +86,6 @@
 
 <style>
   .addrs { display: inline-block; max-width: 420px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
-  .more { color: var(--azul); }
+  .more { color: var(--accent); }
   .warn { color: var(--pend); font-weight: 500; }
 </style>

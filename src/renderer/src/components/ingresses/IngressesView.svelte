@@ -31,9 +31,9 @@
       : []),
     { key: 'class', label: 'Classe', sort: (i) => i.className, text: (i) => i.className || '<none>' },
     { key: 'hosts', label: 'Hosts', sort: (i) => i.hosts.join(','), cell: hosts },
-    { key: 'address', label: 'Endereço', sort: (i) => i.addresses.join(','), cell: address },
-    { key: 'ports', label: 'Portas', sort: (i) => i.ports, text: (i) => i.ports },
-    { key: 'age', label: 'Idade', sort: (i) => (i.created ? -i.created : null), text: (i) => formatAge(i.created, now.value) },
+    { key: 'address', label: 'Endereço', sort: (i) => i.addresses.join(','), cell: address, mono: true },
+    { key: 'ports', label: 'Portas', sort: (i) => i.ports, text: (i) => i.ports, mono: true },
+    { key: 'age', label: 'Idade', sort: (i) => (i.created ? -i.created : null), text: (i) => formatAge(i.created, now.value), mono: true },
   ])
 </script>
 
@@ -48,7 +48,7 @@
 {#if openUid}
   <IngressDetails ingress={opened} loading={ingresses.loading} onback={() => (openUid = null)} />
 {:else}
-  <ListPage title="Ingresses">
+  <ListPage>
     <ResourceTable
       id="ingresses"
       {menu}

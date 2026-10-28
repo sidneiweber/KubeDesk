@@ -32,8 +32,8 @@
     let cleanup = () => {}
 
     // O xterm mede os caracteres ao abrir: com a fonte ainda carregando, o
-    // espaçamento sai errado. Espera a IBM Plex Mono (empacotada, é rápido)
-    void document.fonts.load("400 13px 'IBM Plex Mono'").finally(() => {
+    // espaçamento sai errado. Espera a JetBrains Mono (empacotada, é rápido)
+    void document.fonts.load("400 12px 'JetBrains Mono'").finally(() => {
       if (disposed) return
       cleanup = openTerminal()
     })
@@ -49,19 +49,9 @@
       disableStdin: true,
       cursorBlink: false,
       scrollback: 100_000,
-      fontFamily: "'IBM Plex Mono', monospace",
-      fontSize: 13,
-      lineHeight: 1.2,
-      theme: {
-        background: '#0A1424', // Ink
-        foreground: '#DCE6F0', // Névoa
-        cursor: '#0A1424',
-        selectionBackground: 'rgba(79, 195, 247, .35)', // Ciano claro
-        green: '#3FD07F',
-        brightGreen: '#6FE3A1',
-        blue: '#4FC3F7',
-        brightBlue: '#8AD8FA',
-      },
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: 12,
+      theme: { background: '#141414', foreground: '#e5e5e5', selectionBackground: '#4a9eff55', cursor: '#141414' },
     })
     const fit = new FitAddon()
     search = new SearchAddon()
@@ -191,14 +181,13 @@
   section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); background: var(--term-bg); }
   .bar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    padding: 10px 16px; background: var(--head-bg); border-bottom: 1px solid var(--border);
+    padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border);
   }
-  .bar select, .bar input:not([type='checkbox']), .bar button { height: 30px; font-size: 13px; }
-  .pod { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 13px; color: var(--navy); }
+  .pod { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .search { flex: 0 1 220px; min-width: 120px; }
-  .value { color: var(--text); font-family: var(--mono); font-size: 13px; }
+  .value { color: var(--text); }
   .stats { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 12px; }
   .live { color: var(--ok); }
-  .err { color: var(--fail); font-weight: 500; }
-  .term { flex: 1; min-height: 0; padding: 8px 0 0 12px; }
+  .err { color: var(--fail-text); }
+  .term { flex: 1; min-height: 0; padding: 4px 0 0 8px; }
 </style>

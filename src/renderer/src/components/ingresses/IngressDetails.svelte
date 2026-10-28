@@ -15,7 +15,7 @@
   } = $props()
 </script>
 
-<DetailPage back="Ingresses" {onback} title={ingress?.name ?? 'Ingress'} namespace={ingress?.namespace} found={!!ingress} {loading}>
+<DetailPage back="Ingresses" {onback} title={ingress?.name ?? 'Ingress'} found={!!ingress} {loading}>
   {#snippet actions()}
     {#if ingress}<button onclick={() => openYaml('ingresses', ingress.namespace, ingress.name)}>YAML</button>{/if}
   {/snippet}
@@ -35,7 +35,7 @@
           <thead><tr><th>Host</th><th>Caminho</th><th>Tipo</th><th>Backend</th></tr></thead>
           <tbody>
             {#each ingress.rules as r, i (i)}
-              <tr><td>{r.host}</td><td>{r.path}</td><td>{r.pathType}</td><td>{r.backend}</td></tr>
+              <tr><td>{r.host}</td><td class="mono">{r.path}</td><td>{r.pathType}</td><td class="mono">{r.backend}</td></tr>
             {/each}
           </tbody>
         </table>

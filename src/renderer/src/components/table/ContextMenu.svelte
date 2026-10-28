@@ -77,16 +77,16 @@
   .menu {
     position: fixed; z-index: 50; min-width: 180px; padding: 6px;
     display: flex; flex-direction: column;
-    background: var(--branco); border: 1px solid var(--border); border-radius: 10px;
-    box-shadow: 0 12px 32px rgba(11, 42, 91, .2);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
   }
   .menu:focus { outline: none; }
   button {
     all: unset; box-sizing: border-box; padding: 8px 12px; border-radius: 6px; cursor: pointer;
-    font-size: 14px; color: var(--text);
+    font-size: 13px; color: var(--text);
   }
-  button:hover, button:focus { background: var(--row-selected); color: var(--navy); }
-  .danger { color: var(--fail); }
-  .danger:hover, .danger:focus { background: var(--fail-bg); color: var(--fail); }
+  button:hover, button:focus { background: rgba(74, 158, 255, .15); color: var(--accent); }
+  .danger { color: var(--fail-text); }
+  .danger:hover, .danger:focus { background: var(--fail-bg); color: var(--fail-text); }
   .sep { height: 1px; background: var(--border); margin: 6px 4px; }
 </style>

@@ -1,60 +1,39 @@
-/* Fontes do kit de marca, empacotadas no app: ele precisa funcionar offline */
-@import '@fontsource/ibm-plex-sans/latin-400.css';
-@import '@fontsource/ibm-plex-sans/latin-500.css';
-@import '@fontsource/ibm-plex-sans/latin-600.css';
-@import '@fontsource/ibm-plex-mono/latin-400.css';
-@import '@fontsource/ibm-plex-mono/latin-500.css';
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-SemiBold.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('./assets/fonts/JetBrainsMono-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 
-/* Kit de marca v1.0 (~/kubedesk-brand-kit.html) */
+/* Tema escuro do layout original. Os componentes usam só estes papéis;
+   as cores da marca ficam restritas ao logo (Logo.svelte) e ao ícone. */
 :root {
-  /* Marca */
-  --navy: #0B2A5B;
-  --azul: #0B6BB5;
-  --topo: #1C8FD8;
-  --ciano: #12A8E6;
-  --ciano-claro: #4FC3F7;
+  --bg: #1a1a1a;
+  --surface: #2d2d2d;
+  --surface-2: #363636;
+  --surface-sunken: #141414;
+  --border: #404040;
+  --border-subtle: #262626;
+  --text: #ffffff;
+  --text-2: #d4d4d4;
+  --muted: #a0a0a0;
+  --accent: #4a9eff;
+  --focus: #4a9eff;
 
-  /* Neutros */
-  --ink: #0A1424;
-  --grafite: #3A4A63;
-  --aco: #5B6B82;
-  --nevoa: #DCE6F0;
-  --gelo: #EAF4FB;
-  --branco: #FFFFFF;
+  --row-hover: #222222;
+  --row-selected: rgba(74, 158, 255, .12);
+  --head-bg: var(--surface);
 
-  /* Status: sempre com ícone + texto, nunca só a cor */
-  --ok: #17804A;      --ok-bg: #E3F3EA;
-  --pend: #9A5B00;    --pend-bg: #FDF0DC;
-  --fail: #C62D3A;    --fail-bg: #FBE6E8;
-  --unk: #5B6B82;     --unk-bg: #EDF1F6;
+  /* Status: cor do texto e fundo tingido da pill */
+  --ok: #4ade80;   --ok-bg: rgba(74, 222, 128, .15);
+  --pend: #fbbf24; --pend-bg: rgba(251, 191, 36, .15);
+  --fail: #ef4444; --fail-bg: rgba(239, 68, 68, .15); --fail-text: #fca5a5;
+  --done: #a78bfa; --done-bg: rgba(167, 139, 250, .15);
+  --unk: #a0a0a0;  --unk-bg: #363636;
 
-  /* Papéis na interface */
-  --bg: var(--branco);
-  --surface: var(--branco);
-  --surface-2: var(--gelo);
-  --head-bg: #F6F9FC;
-  --row-hover: #F4F8FC;
-  --row-selected: #E3EFFA;
-  --border: var(--nevoa);
-  --text: var(--ink);
-  --text-2: var(--grafite);
-  --muted: var(--aco);
-  --accent: var(--azul);
-  --focus: var(--ciano);
+  --term-bg: #141414;
 
-  /* Barra lateral (navy) */
-  --side-bg: var(--navy);
-  --side-text: #C9D6E6;
-  --side-muted: #9FB3CC;
-  --side-hover: #123B7A;
-
-  /* Terminal de logs */
-  --term-bg: var(--ink);
-  --term-fg: #DCE6F0;
-
-  --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  color-scheme: light;
+  --sans: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  color-scheme: dark;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -63,12 +42,10 @@ html, body, #app { height: 100%; }
 
 body {
   font-family: var(--sans);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 13px;
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
-  -webkit-font-smoothing: antialiased;
 }
 
 code, .mono { font-family: var(--mono); }
@@ -76,51 +53,46 @@ code, .mono { font-family: var(--mono); }
 select, input, button {
   font: inherit;
   color: inherit;
-  background: var(--branco);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  height: 34px;
-  padding: 0 10px;
+  border-radius: 6px;
+  padding: 5px 9px;
 }
-select, input { color: var(--text); }
-input[type='checkbox'] { height: auto; padding: 0; accent-color: var(--azul); }
-input::placeholder { color: var(--muted); }
-input:focus, select:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 3px rgba(11, 107, 181, .15); }
+input[type='checkbox'] { padding: 0; accent-color: var(--accent); }
 
-button { cursor: pointer; font-weight: 500; color: var(--text-2); padding: 0 14px; }
-button:hover:not(:disabled) { border-color: var(--azul); color: var(--azul); }
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled, select:disabled, input:disabled { opacity: .5; cursor: default; }
 
-button.primary { background: var(--azul); border-color: var(--azul); color: #fff; }
-button.primary:hover:not(:disabled) { background: var(--navy); border-color: var(--navy); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #0b1a2b; font-weight: 600; }
+button.primary:hover:not(:disabled) { filter: brightness(1.1); }
 
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-input:focus-visible, select:focus-visible { outline: none; }
+button.danger { background: var(--fail); border-color: var(--fail); color: #fff; font-weight: 600; }
+button.danger:hover:not(:disabled) { filter: brightness(1.1); }
 
-label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
-/* Rótulo do kit: Mono 500, maiúsculo, espaçado */
-.eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+
+/* Título de seção: pequeno, maiúsculo, discreto */
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 
 .error-box {
-  padding: 10px 12px;
-  border: 1px solid #F1C3C8;
-  border-radius: 8px;
-  background: var(--fail-bg);
-  color: var(--fail);
+  padding: 8px 12px;
+  border: 1px solid var(--fail);
+  border-radius: 6px;
+  background: rgba(239, 68, 68, .12);
+  color: var(--fail-text);
   white-space: pre-wrap;
   user-select: text;
 }
 
 /* Tabela pequena das páginas de detalhe (condições, regras, portas) */
-.detail-table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.detail-table th {
-  text-align: left; padding: 10px 16px; background: var(--head-bg); border-bottom: 1px solid var(--border); white-space: nowrap;
-  font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
-}
-.detail-table td { padding: 9px 16px; border-bottom: 1px solid var(--border); vertical-align: top; user-select: text; color: var(--text-2); font-family: var(--mono); font-size: 13px; }
-.detail-table tbody tr:last-child td { border-bottom: 0; }
-.detail-table td:first-child { color: var(--navy); font-weight: 500; }
-.detail-table td.text { font-family: var(--sans); font-size: 14px; white-space: normal; }
-.detail-table td.ok { color: var(--ok); font-weight: 500; }
-.detail-table td.bad { color: var(--fail); font-weight: 500; }
+.detail-table { width: 100%; border-collapse: collapse; }
+.detail-table th { text-align: left; font-weight: 500; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.detail-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; user-select: text; }
+.detail-table td:first-child { font-weight: 500; }
+.detail-table td.mono { font-family: var(--mono); font-size: 12px; }
+.detail-table td.text { white-space: normal; }
+.detail-table td.ok { color: var(--ok); }
+.detail-table td.bad { color: var(--fail); }

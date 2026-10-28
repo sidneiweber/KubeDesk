@@ -32,7 +32,7 @@
 {#if detailsUid}
   <DeploymentDetails deployment={details} loading={deployments.loading} onback={() => (detailsUid = null)} onscale={scale} onrestart={restart} />
 {:else}
-  <ListPage title="Deployments">
+  <ListPage>
     <DeploymentsTable {deployments} namespace={session.namespace} onopen={open} onscale={scale} onrestart={restart} />
   </ListPage>
 {/if}

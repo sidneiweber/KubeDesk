@@ -50,12 +50,12 @@
 <div class="screen">
   <div class="card">
     <header>
-      <h1><Logo size={36} /></h1>
-      <p class="subtitle">Gerencie seus clusters Kubernetes em uma só janela.</p>
+      <h1><Logo size={36} on="dark" /></h1>
     </header>
+    <p class="subtitle">Conecte-se aos seus clusters Kubernetes</p>
 
     <div class="field">
-      <span class="eyebrow">Kubeconfig</span>
+      <span class="label">Kubeconfig</span>
       <div class="row">
         <code title={session.kubeconfigPath ?? ''}>{session.kubeconfigPath ?? 'Padrão ($KUBECONFIG ou ~/.kube/config)'}</code>
         <button onclick={selectFile} disabled={connecting}>Selecionar…</button>
@@ -63,7 +63,7 @@
     </div>
 
     <label class="field">
-      <span class="eyebrow">Contexto</span>
+      <span class="label">Contexto</span>
       <select bind:value={selected} disabled={loading || connecting || session.contexts.length === 0}>
         {#if session.contexts.length === 0}
           <option value="">{loading ? 'Carregando…' : 'Nenhum contexto encontrado'}</option>
@@ -85,30 +85,24 @@
 </div>
 
 <style>
-  /* Fundo do hero do kit: Ink com a grade sutil */
-  .screen {
-    height: 100%; display: grid; place-items: center; padding: 24px; overflow: auto;
-    background-color: var(--ink);
-    background-image: linear-gradient(#13223A 1px, transparent 1px), linear-gradient(90deg, #13223A 1px, transparent 1px);
-    background-size: 40px 40px;
-  }
+  .screen { height: 100%; display: grid; place-items: center; padding: 24px; overflow: auto; }
   .card {
-    width: min(500px, 100%);
-    display: flex; flex-direction: column; gap: 20px;
-    padding: 36px; border-radius: 16px;
-    background: var(--branco);
-    box-shadow: 0 24px 60px rgba(0, 0, 0, .35);
+    width: min(520px, 100%);
+    display: flex; flex-direction: column; gap: 18px;
+    padding: 32px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--border);
   }
-  header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 4px; }
+  header { display: flex; align-items: center; gap: 12px; }
   h1 { display: flex; }
-  .subtitle { color: var(--text-2); font-size: 15px; }
-
+  .subtitle { color: var(--muted); margin-top: -10px; }
   .field { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+  .label { color: var(--muted); font-size: 12px; }
   .row { display: flex; gap: 8px; }
   code {
-    flex: 1; min-width: 0; height: 34px; display: flex; align-items: center; padding: 0 10px; border-radius: 8px;
-    background: var(--gelo); border: 1px solid var(--border); color: var(--navy);
-    font-size: 12px; overflow: hidden; white-space: nowrap;
+    flex: 1; min-width: 0; padding: 6px 9px; border-radius: 6px;
+    background: var(--surface-sunken); border: 1px solid var(--border);
+    font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
   }
-  .connect { height: 42px; margin-top: 4px; }
+  .connect { padding: 9px; }
 </style>

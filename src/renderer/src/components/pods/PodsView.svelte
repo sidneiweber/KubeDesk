@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { PodRow } from '@shared/api'
   import { session } from '../../lib/session.svelte'
-  import PageHeader from '../PageHeader.svelte'
   import PodsTable from './PodsTable.svelte'
   import LogViewer from '../logs/LogViewer.svelte'
 
@@ -15,10 +14,7 @@
 </script>
 
 <div class="view" class:split={logPod}>
-  <div class="list">
-    <PageHeader title="Pods" />
-    <PodsTable namespace={session.namespace} selected={logPod?.uid} onlogs={(p) => (logPod = p)} />
-  </div>
+  <PodsTable namespace={session.namespace} selected={logPod?.uid} onlogs={(p) => (logPod = p)} />
   {#if logPod}
     {#key logPod.uid}
       <LogViewer pod={logPod} onclose={() => (logPod = null)} />
@@ -28,8 +24,5 @@
 
 <style>
   .view { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
-  .view.split { grid-template-rows: minmax(180px, 50%) minmax(0, 1fr); }
-  .list { min-height: 0; display: flex; flex-direction: column; gap: 20px; padding: 24px 32px; }
-  .list > :global(section) { flex: 1; }
-  .split .list { padding-bottom: 16px; }
+  .view.split { grid-template-rows: minmax(150px, 45%) minmax(0, 1fr); }
 </style>

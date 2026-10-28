@@ -35,12 +35,12 @@
   .na { color: var(--muted); }
   .usage { display: inline-flex; align-items: center; gap: 8px; }
   .value { min-width: 46px; }
-  .bar { width: 48px; height: 6px; border-radius: 3px; background: var(--nevoa); overflow: hidden; }
+  .bar { width: 48px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
   .bar span { display: block; height: 100%; border-radius: 3px; }
   .ok span { background: var(--ok); }
-  .warn span { background: #D98E04; }
+  .warn span { background: var(--pend); }
   .high span { background: var(--fail); }
-  .neutral span { background: var(--azul); }
+  .neutral span { background: var(--accent); }
   .pct { font-size: 11px; color: var(--muted); min-width: 32px; }
   .high + .pct { color: var(--fail); font-weight: 500; }
 </style>

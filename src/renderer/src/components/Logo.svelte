@@ -32,8 +32,9 @@
   .logo { display: inline-flex; align-items: center; }
   svg { display: block; flex-shrink: 0; }
   .wm { font-weight: 600; letter-spacing: -.03em; line-height: 1; white-space: nowrap; }
-  .a { color: var(--navy); }
-  .b { color: var(--azul); }
+  /* Cores do kit de marca, fixas aqui: o tema do app não as usa */
+  .a { color: #0B2A5B; }
+  .b { color: #0B6BB5; }
   .dark .a, .navy .a { color: #fff; }
-  .dark .b, .navy .b { color: var(--ciano-claro); }
+  .dark .b, .navy .b { color: #4FC3F7; }
 </style>

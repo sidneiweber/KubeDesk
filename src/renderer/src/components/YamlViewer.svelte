@@ -87,7 +87,7 @@
       </span>
       <button onclick={load} disabled={loading}>Recarregar</button>
       <button onclick={copy} disabled={!yaml}>Copiar</button>
-      <button class="primary" onclick={save} disabled={!yaml}>Salvar…</button>
+      <button onclick={save} disabled={!yaml}>Salvar…</button>
     </div>
 
     {#if error}
@@ -106,40 +106,37 @@
 <style>
   /* Painel à direita, de altura total */
   dialog {
-    margin: 0 0 0 auto; padding: 0; border: 0; height: 100vh; max-height: 100vh;
+    margin: 0 0 0 auto; padding: 0; height: 100vh; max-height: 100vh;
     width: min(860px, 75vw); max-width: 100vw;
-    background: var(--branco); color: var(--text);
-    box-shadow: -24px 0 60px rgba(11, 42, 91, .22);
+    background: var(--surface); color: var(--text);
+    border: 0; border-left: 1px solid var(--border);
+    box-shadow: -20px 0 50px rgba(0, 0, 0, .5);
   }
-  dialog::backdrop { background: rgba(10, 20, 36, .45); }
+  dialog::backdrop { background: rgba(0, 0, 0, .55); }
   .panel { height: 100%; display: flex; flex-direction: column; }
 
-  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 12px; }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 16px 10px; }
   .titles { min-width: 0; }
-  h2 { font-size: 20px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; user-select: text; }
-  .close { height: 32px; width: 32px; padding: 0; }
+  h2 { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; user-select: text; }
 
-  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 24px 14px; border-bottom: 1px solid var(--border); }
-  .toolbar label { font-family: var(--mono); font-size: 12px; }
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 16px 12px; border-bottom: 1px solid var(--border); }
   .when { margin-right: auto; color: var(--muted); font-size: 12px; }
-  .toolbar button { height: 32px; }
-  .error-box { margin: 16px 24px; }
+  .error-box { margin: 16px; }
 
-  .code { flex: 1; min-height: 0; overflow: auto; display: flex; background: #FBFDFF; }
-  pre { margin: 0; padding: 14px 0; font-family: var(--mono); font-size: 13px; line-height: 1.6; }
-  .gutter {
-    position: sticky; left: 0; flex-shrink: 0; padding: 14px 12px 14px 16px; text-align: right;
-    color: #9AA9BD; background: var(--head-bg); border-right: 1px solid var(--border); user-select: none;
-  }
-  .yaml { flex: 1; padding-left: 16px; padding-right: 24px; color: var(--ink); user-select: text; white-space: pre; }
+  .code { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--term-bg); }
   .code:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  pre { margin: 0; padding: 12px 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+  .gutter {
+    position: sticky; left: 0; flex-shrink: 0; padding: 12px 10px 12px 14px; text-align: right;
+    color: #5c5c5c; background: #1b1b1b; border-right: 1px solid var(--border-subtle); user-select: none;
+  }
+  .yaml { flex: 1; padding-left: 14px; padding-right: 20px; color: #e5e5e5; user-select: text; white-space: pre; }
 
-  /* Cores de sintaxe a partir da paleta do kit, legíveis sobre branco */
-  .yaml :global(.token.key), .yaml :global(.token.atrule) { color: var(--azul); }
-  .yaml :global(.token.string) { color: var(--ok); }
-  .yaml :global(.token.number) { color: var(--pend); }
-  .yaml :global(.token.boolean), .yaml :global(.token.null), .yaml :global(.token.important) { color: var(--navy); font-weight: 600; }
-  .yaml :global(.token.punctuation) { color: var(--aco); }
-  .yaml :global(.token.comment) { color: var(--aco); font-style: italic; }
-  .yaml :global(.token.datetime) { color: var(--pend); }
+  /* Cores de sintaxe no espírito do tema "tomorrow" que o app antigo usava */
+  .yaml :global(.token.key), .yaml :global(.token.atrule) { color: #81a2be; }
+  .yaml :global(.token.string) { color: #b5bd68; }
+  .yaml :global(.token.number), .yaml :global(.token.datetime) { color: #de935f; }
+  .yaml :global(.token.boolean), .yaml :global(.token.null), .yaml :global(.token.important) { color: #b294bb; }
+  .yaml :global(.token.punctuation) { color: #969896; }
+  .yaml :global(.token.comment) { color: #969896; font-style: italic; }
 </style>
