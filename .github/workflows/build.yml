@@ -46,6 +46,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     strategy:
+      # Uma plataforma falhar não cancela as outras
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         include:
