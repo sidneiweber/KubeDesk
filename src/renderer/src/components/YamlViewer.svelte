@@ -12,6 +12,7 @@
   const KIND_LABEL: Record<YamlTarget['kind'], string> = {
     pods: 'Pod', deployments: 'Deployment', namespaces: 'Namespace',
     services: 'Service', ingresses: 'Ingress', endpointslices: 'EndpointSlice',
+    poddetails: 'Pod', events: 'Event',
   }
 
   let dialog: HTMLDialogElement

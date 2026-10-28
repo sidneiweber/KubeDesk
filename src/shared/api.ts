@@ -42,6 +42,62 @@ export interface PodUsage {
   key: string
   cpu: number
   memory: number
+  containers: { name: string; cpu: number; memory: number }[]
+}
+
+export interface ContainerDetail {
+  name: string
+  image: string
+  /** "Running", "Waiting", "Terminated" ou "" antes de ter status. */
+  state: string
+  /** Motivo do estado: CrashLoopBackOff, Completed, OOMKilled… */
+  reason: string
+  message: string
+  /** Desde quando está no estado atual (epoch ms). */
+  since: number
+  exitCode: number | null
+  ready: boolean
+  restarts: number
+  /** Motivo do último encerramento, ex.: "OOMKilled (137)". Vazio se nunca reiniciou. */
+  lastTermination: string
+  ports: string[]
+  cpuRequest: number | null
+  cpuLimit: number | null
+  memoryRequest: number | null
+  memoryLimit: number | null
+}
+
+/** Tudo o que a página de detalhe do pod mostra. */
+export interface PodDetail extends PodRow {
+  qosClass: string
+  serviceAccount: string
+  restartPolicy: string
+  priorityClass: string
+  hostIP: string
+  podIPs: string[]
+  startTime: number
+  initContainers: ContainerDetail[]
+  containerDetails: ContainerDetail[]
+  conditions: DeploymentCondition[]
+  /** "nome: tipo origem", ex.: "config: ConfigMap app-config". */
+  volumes: { name: string; kind: string; source: string }[]
+  labels: Record<string, string>
+  annotations: Record<string, string>
+}
+
+export interface EventRow {
+  uid: string
+  /** "Normal" ou "Warning". */
+  type: string
+  reason: string
+  message: string
+  count: number
+  /** Última ocorrência (epoch ms). */
+  last: number
+  first: number
+  /** Componente que reportou, ex.: "kubelet", "default-scheduler". */
+  source: string
+  object: string
 }
 
 export interface MetricsUpdate {
@@ -186,6 +242,9 @@ export interface WatchRows {
   services: ServiceRow
   ingresses: IngressRow
   endpointslices: EndpointSliceRow
+  /** Um pod só, com tudo para a página de detalhe (fieldSelector metadata.name). */
+  poddetails: PodDetail
+  events: EventRow
 }
 export type WatchKind = keyof WatchRows
 
@@ -193,6 +252,8 @@ export interface WatchOptions {
   /** "" = todos. Ignorado em recursos sem namespace (namespaces). */
   namespace: string
   labelSelector?: string
+  /** Ex.: "metadata.name=web-1", "involvedObject.uid=…". */
+  fieldSelector?: string
 }
 
 export interface LogOptions {

@@ -13,6 +13,8 @@ const LOCATION: Record<WatchKind, { prefix: string; resource: string; namespaced
   services: { prefix: '/api/v1', resource: 'services', namespaced: true },
   ingresses: { prefix: '/apis/networking.k8s.io/v1', resource: 'ingresses', namespaced: true },
   endpointslices: { prefix: '/apis/discovery.k8s.io/v1', resource: 'endpointslices', namespaced: true },
+  poddetails: { prefix: '/api/v1', resource: 'pods', namespaced: true },
+  events: { prefix: '/api/v1', resource: 'events', namespaced: true },
 }
 
 /**

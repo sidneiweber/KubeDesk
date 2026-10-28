@@ -12,19 +12,23 @@ const POLL_MS = 15_000
 const RETRY_UNAVAILABLE_MS = 60_000
 
 interface PodMetricsList {
-  items: { metadata: { name: string; namespace: string }; timestamp?: string; containers: { usage: { cpu?: string; memory?: string } }[] }[]
+  items: { metadata: { name: string; namespace: string }; timestamp?: string; containers: { name: string; usage: { cpu?: string; memory?: string } }[] }[]
 }
 
 /** Soma o uso dos containers de cada pod. */
 export function toPodUsage(list: PodMetricsList): PodUsage[] {
   return list.items.map((p) => {
-    let cpu = 0
-    let memory = 0
-    for (const c of p.containers) {
-      cpu += cpuMillicores(c.usage.cpu) ?? 0
-      memory += memoryBytes(c.usage.memory) ?? 0
+    const containers = p.containers.map((c) => ({
+      name: c.name,
+      cpu: cpuMillicores(c.usage.cpu) ?? 0,
+      memory: memoryBytes(c.usage.memory) ?? 0,
+    }))
+    return {
+      key: `${p.metadata.namespace}/${p.metadata.name}`,
+      cpu: containers.reduce((a, c) => a + c.cpu, 0),
+      memory: containers.reduce((a, c) => a + c.memory, 0),
+      containers,
     }
-    return { key: `${p.metadata.namespace}/${p.metadata.name}`, cpu, memory }
   })
 }
 

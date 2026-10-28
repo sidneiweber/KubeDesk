@@ -13,12 +13,14 @@
   import DeletePodDialog from './DeletePodDialog.svelte'
   import { openYaml } from '../../lib/yaml.svelte'
 
-  let { namespace, labelSelector, selected, onlogs, emptyText = 'Nenhum pod neste namespace' }: {
+  let { namespace, labelSelector, selected, onlogs, onopen, emptyText = 'Nenhum pod neste namespace' }: {
     namespace: string
     /** Só os pods que casam com o seletor (ex.: os de um deployment). */
     labelSelector?: string
     selected?: string | null
     onlogs: (p: PodRow) => void
+    /** Abre os detalhes do pod; com ele, o nome vira link. */
+    onopen?: (p: PodRow) => void
     emptyText?: string
   } = $props()
 
@@ -30,13 +32,14 @@
   let deleting = $state<PodRow | null>(null)
 
   const menu = (p: PodRow) => [
+    ...(onopen ? [{ label: 'Detalhes', action: () => onopen(p) }] : []),
     { label: 'Logs', action: () => onlogs(p) },
     { label: 'YAML', action: () => openYaml('pods', p.namespace, p.name) },
     { label: 'Apagar pod…', action: () => (deleting = p), danger: true },
   ]
 
   const columns: Column<PodRow>[] = $derived([
-    { key: 'name', label: 'Nome', sort: (p) => p.name, text: (p) => p.name },
+    { key: 'name', label: 'Nome', sort: (p) => p.name, text: (p) => p.name, link: !!onopen },
     ...(namespace === '' ? [{ key: 'namespace', label: 'Namespace', sort: (p: PodRow) => p.namespace, text: (p: PodRow) => p.namespace }] : []),
     { key: 'status', label: 'Status', sort: (p) => p.status, cell: status },
     { key: 'ready', label: 'Ready', sort: (p) => readyFraction(p.ready), text: (p) => p.ready, mono: true },
@@ -72,6 +75,7 @@
   {emptyText}
   {selected}
   onactivate={onlogs}
+  {onopen}
 >
   {#snippet toolbar()}
     {#if unavailable}<span class="notice" title={unavailable}>Métricas indisponíveis: {unavailable}</span>{/if}

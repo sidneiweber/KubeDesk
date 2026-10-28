@@ -6,13 +6,15 @@ describe('métricas', () => {
     const usage = toPodUsage({
       items: [{
         metadata: { name: 'web', namespace: 'prod' },
-        containers: [{ usage: { cpu: '12500000n', memory: '20Mi' } }, { usage: { cpu: '3m', memory: '1024Ki' } }],
+        containers: [{ name: 'app', usage: { cpu: '12500000n', memory: '20Mi' } }, { name: 'sidecar', usage: { cpu: '3m', memory: '1024Ki' } }],
       }],
     })
     expect(usage).toHaveLength(1)
     expect(usage[0].key).toBe('prod/web')
     expect(usage[0].cpu).toBeCloseTo(15.5)
     expect(usage[0].memory).toBe(21 * 2 ** 20)
+    expect(usage[0].containers.map((c) => c.name)).toEqual(['app', 'sidecar'])
+    expect(usage[0].containers[1].cpu).toBe(3)
   })
 
   it.each<[number, RegExp]>([

@@ -1,4 +1,4 @@
-import { makeInformer, type KubeConfig, type KubernetesListObject, type KubernetesObject } from '@kubernetes/client-node'
+import { ListWatch, Watch, type KubeConfig, type KubernetesListObject, type KubernetesObject } from '@kubernetes/client-node'
 import type { Batch } from '@shared/api'
 import { errorMessage } from './errors'
 
@@ -9,9 +9,10 @@ export interface WatchSpec<T extends KubernetesObject, R> {
   kc: KubeConfig
   /** Caminho da API para o watch, ex.: /api/v1/namespaces/x/pods */
   path: string
-  /** Listagem com os mesmos filtros (namespace, labelSelector) do watch. */
+  /** Listagem com os mesmos filtros (namespace, seletores) do watch. */
   list: () => Promise<KubernetesListObject<T>>
   labelSelector?: string
+  fieldSelector?: string
   toRow: (obj: T) => R
   emit: (b: Batch<R>) => void
   onError: (message: string) => void
@@ -32,7 +33,8 @@ export function resourcePath(prefix: string, resource: string, namespace: string
  */
 export function watchResource<T extends KubernetesObject, R>(spec: WatchSpec<T, R>): () => void {
   const { toRow, emit, onError } = spec
-  const informer = makeInformer<T>(spec.kc, spec.path, spec.list, spec.labelSelector)
+  // ListWatch direto em vez de makeInformer: só ele aceita fieldSelector
+  const informer = new ListWatch<T>(spec.path, new Watch(spec.kc), spec.list, false, spec.labelSelector, spec.fieldSelector)
 
   let stopped = false
   let synced = false

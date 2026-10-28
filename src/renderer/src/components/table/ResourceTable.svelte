@@ -13,7 +13,7 @@
     /** Números, idades, IPs: fonte monoespaçada. */
     mono?: boolean
     muted?: boolean
-    /** O texto vira link que abre o recurso (chama onactivate). */
+    /** O texto vira link que abre o recurso (chama onopen, ou onactivate). */
     link?: boolean
     /** Começa escondida (o usuário pode mostrar pelo botão Colunas). */
     hidden?: boolean
@@ -39,6 +39,7 @@
     initialSort = { column: 'name', direction: 'asc' },
     selected,
     onactivate,
+    onopen,
     actions,
     toolbar,
     menu,
@@ -58,6 +59,8 @@
     selected?: string | null
     /** Duplo clique ou Enter na linha. */
     onactivate?: (row: R) => void
+    /** Clique no link do nome; padrão é onactivate. */
+    onopen?: (row: R) => void
     actions?: Snippet<[R]>
     toolbar?: Snippet
     /** Itens do menu de contexto (botão direito, tecla Menu ou Shift+F10). */
@@ -184,8 +187,8 @@
               <td class:mono={c.mono} class:muted={c.muted}>
                 {#if c.cell}
                   {@render c.cell(row)}
-                {:else if c.link && onactivate}
-                  <button class="link" onclick={() => onactivate(row)}>{c.text?.(row) ?? ''}</button>
+                {:else if c.link && (onopen ?? onactivate)}
+                  <button class="link" onclick={() => (onopen ?? onactivate)?.(row)}>{c.text?.(row) ?? ''}</button>
                 {:else}
                   {c.text?.(row) ?? ''}
                 {/if}

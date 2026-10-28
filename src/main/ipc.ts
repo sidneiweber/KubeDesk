@@ -7,11 +7,12 @@ import { restartDeployment, scaleDeployment, watchDeployments } from './kube/dep
 import { watchEndpointSlices } from './kube/endpointSlices'
 import { watchIngresses } from './kube/ingresses'
 import { watchNamespaces } from './kube/namespaces'
+import { watchEvents } from './kube/events'
 import { watchServices } from './kube/services'
 import { errorMessage } from './kube/errors'
 import { streamLogs } from './kube/logs'
 import { watchPodMetrics } from './kube/metrics'
-import { deletePod, watchPods } from './kube/pods'
+import { deletePod, watchPodDetails, watchPods } from './kube/pods'
 import { resourceYaml } from './kube/yaml'
 import { PrefsStore } from './prefs'
 
@@ -46,6 +47,8 @@ const watchers: { [K in WatchKind]: Watcher<K> } = {
   services: watchServices,
   ingresses: watchIngresses,
   endpointslices: watchEndpointSlices,
+  poddetails: watchPodDetails,
+  events: watchEvents,
 }
 
 function requireCluster(): KubeConfig {
