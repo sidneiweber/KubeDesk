@@ -42,17 +42,13 @@ jobs:
         node-version: '22'
         cache: 'npm'
 
-    - name: Install snapcraft (Linux only)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo snap install snapcraft --classic
-        snapcraft --version
-
     - name: Install dependencies
       run: npm ci
 
     - name: Build application
-      run: npm run dist
+      # Sem publicar: com a tag, o electron-builder criaria um rascunho de
+      # release à parte. Quem monta a release é o job create-release.
+      run: npm run dist -- --publish never
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -77,54 +73,6 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: artifacts/
-
-    - name: Create release archive
-      run: |
-        mkdir -p release-packages
-        
-        echo "🔍 Procurando artefatos..."
-        find artifacts -type f -name "*" | head -20
-        
-        # Organize artifacts by platform
-        mkdir -p release-packages/linux release-packages/windows release-packages/macos
-        
-        # Linux artifacts
-        echo "📦 Organizando artefatos Linux..."
-        find artifacts -path "*/linux-*" -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) -exec cp {} release-packages/linux/ \;
-        
-        # Windows artifacts (exclude elevate.exe and other unwanted files)
-        echo "📦 Organizando artefatos Windows..."
-        find artifacts -path "*/win-*" -type f \( -name "*.exe" -o -name "*.zip" \) ! -name "elevate.exe" ! -name "*.exe.blockmap" -exec cp {} release-packages/windows/ \;
-        
-        # macOS artifacts
-        echo "📦 Organizando artefatos macOS..."
-        find artifacts -path "*/mac-*" -type f \( -name "*.dmg" -o -name "*.zip" \) -exec cp {} release-packages/macos/ \;
-        
-        # Create individual platform archives
-        cd release-packages
-        for platform in linux windows macos; do
-          if [ -d "$platform" ] && [ "$(ls -A $platform)" ]; then
-            zip -r "kubedesk-${{ github.ref_name }}-$platform.zip" "$platform"
-            echo "✅ Criado: kubedesk-${{ github.ref_name }}-$platform.zip"
-          fi
-        done
-        
-        # Create universal archive
-        zip -r "kubedesk-${{ github.ref_name }}-all-platforms.zip" .
-        echo "✅ Criado: kubedesk-${{ github.ref_name }}-all-platforms.zip"
-        
-        # List all created files
-        echo "📋 Arquivos criados:"
-        ls -la *.zip
-        
-        # List contents for verification
-        echo "📋 Conteúdo por plataforma:"
-        for platform in linux windows macos; do
-          if [ -d "$platform" ]; then
-            echo "  $platform:"
-            ls -la "$platform" || echo "    (vazio)"
-          fi
-        done
 
     - name: Generate release notes
       id: release_notes
@@ -157,12 +105,6 @@ jobs:
         echo "### 🍎 macOS" >> release_notes.md
         echo "- **DMG**: Instalador para macOS" >> release_notes.md
         echo "- **ZIP**: Arquivo compactado" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "### 📁 Arquivos Organizados" >> release_notes.md
-        echo "- **all-platforms.zip**: Todos os artefatos" >> release_notes.md
-        echo "- **linux.zip**: Apenas artefatos Linux" >> release_notes.md
-        echo "- **windows.zip**: Apenas artefatos Windows" >> release_notes.md
-        echo "- **macos.zip**: Apenas artefatos macOS" >> release_notes.md
         
         # Set the release notes as output
         {
@@ -174,11 +116,17 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
+        name: KubeDesk ${{ github.ref_name }}
+        # artifacts/<plataforma>/<arquivo>: só o primeiro nível, que tem os
+        # instaladores (as pastas *-unpacked ficam de fora)
         files: |
-          kubedesk-${{ github.ref_name }}-all-platforms.zip
-          kubedesk-${{ github.ref_name }}-linux.zip
-          kubedesk-${{ github.ref_name }}-windows.zip
-          kubedesk-${{ github.ref_name }}-macos.zip
+          artifacts/*/*.AppImage
+          artifacts/*/*.deb
+          artifacts/*/*.rpm
+          artifacts/*/*.exe
+          artifacts/*/*.dmg
+          artifacts/*/*.zip
+        fail_on_unmatched_files: true
         body_path: release_notes.md
         generate_release_notes: false
         draft: false
