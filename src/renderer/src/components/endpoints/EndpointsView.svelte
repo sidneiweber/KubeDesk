@@ -1,4 +1,5 @@
 <script lang="ts">
+  import IconButton from '../IconButton.svelte'
   import { groupEndpointSlices, type ServiceEndpoints } from '../../lib/endpoints'
   import { formatAge } from '../../lib/formatAge'
   import { LiveList } from '../../lib/liveList.svelte'
@@ -78,7 +79,7 @@
       onactivate={(g) => (openUid = g.uid)}
     >
       {#snippet actions(g)}
-        <button onclick={() => (openUid = g.uid)} aria-label="Detalhes de {g.service}">Detalhes</button>
+        <IconButton icon="details" label="Detalhes de {g.service}" onclick={() => (openUid = g.uid)} />
       {/snippet}
     </ResourceTable>
   </ListPage>

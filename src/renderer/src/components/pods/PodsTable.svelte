@@ -1,4 +1,5 @@
 <script lang="ts">
+  import IconButton from '../IconButton.svelte'
   import type { PodRow } from '@shared/api'
   import { formatAge } from '../../lib/formatAge'
   import { LiveList } from '../../lib/liveList.svelte'
@@ -76,8 +77,8 @@
     {#if unavailable}<span class="notice" title={unavailable}>Métricas indisponíveis: {unavailable}</span>{/if}
   {/snippet}
   {#snippet actions(p)}
-    <button onclick={() => onlogs(p)} aria-label="Logs de {p.name}">Logs</button>
-    <button onclick={() => openYaml('pods', p.namespace, p.name)} aria-label="YAML de {p.name}">YAML</button>
+    <IconButton icon="logs" label="Logs de {p.name}" onclick={() => onlogs(p)} />
+    <IconButton icon="yaml" label="YAML de {p.name}" onclick={() => openYaml('pods', p.namespace, p.name)} />
   {/snippet}
 </ResourceTable>
 

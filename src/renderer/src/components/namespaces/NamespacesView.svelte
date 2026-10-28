@@ -1,4 +1,5 @@
 <script lang="ts">
+  import IconButton from '../IconButton.svelte'
   import type { NamespaceRow } from '@shared/api'
   import { formatAge } from '../../lib/formatAge'
   import { LiveList } from '../../lib/liveList.svelte'
@@ -56,8 +57,8 @@
     onactivate={open}
   >
     {#snippet actions(n)}
-      <button onclick={() => open(n)} aria-label="Ver pods de {n.name}">Ver pods</button>
-      <button onclick={() => openYaml('namespaces', '', n.name)} aria-label="YAML de {n.name}">YAML</button>
+      <IconButton icon="pods" label="Ver pods de {n.name}" onclick={() => open(n)} />
+      <IconButton icon="yaml" label="YAML de {n.name}" onclick={() => openYaml('namespaces', '', n.name)} />
     {/snippet}
   </ResourceTable>
 </ListPage>

@@ -225,8 +225,9 @@
   .mono { font-family: var(--mono); font-size: 12px; }
   .muted { color: var(--muted); }
   .empty { text-align: center; color: var(--muted); padding: 32px; font-weight: 400; }
-  .actions { text-align: right; user-select: none; }
-  .actions :global(button) { padding: 2px 10px; font-size: 12px; margin-left: 4px; }
+  .actions { text-align: right; user-select: none; padding-top: 3px; padding-bottom: 3px; }
+  .actions :global(button) { margin-left: 2px; }
+  .actions :global(button:not(.icon-btn)) { padding: 2px 10px; font-size: 12px; }
 
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>

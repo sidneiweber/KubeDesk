@@ -1,4 +1,5 @@
 <script lang="ts">
+  import IconButton from '../IconButton.svelte'
   import type { DeploymentRow } from '@shared/api'
   import { formatAge } from '../../lib/formatAge'
   import type { LiveList } from '../../lib/liveList.svelte'
@@ -57,10 +58,10 @@
   onactivate={onopen}
 >
   {#snippet actions(d)}
-    <button onclick={() => onopen(d)} aria-label="Detalhes de {d.name}">Detalhes</button>
-    <button onclick={() => onscale(d)} aria-label="Escalar {d.name}">Escalar</button>
-    <button onclick={() => onrestart(d)} aria-label="Reiniciar {d.name}">Reiniciar</button>
-    <button onclick={() => openYaml('deployments', d.namespace, d.name)} aria-label="YAML de {d.name}">YAML</button>
+    <IconButton icon="details" label="Detalhes de {d.name}" onclick={() => onopen(d)} />
+    <IconButton icon="scale" label="Escalar {d.name}" onclick={() => onscale(d)} />
+    <IconButton icon="restart" label="Reiniciar {d.name}" onclick={() => onrestart(d)} />
+    <IconButton icon="yaml" label="YAML de {d.name}" onclick={() => openYaml('deployments', d.namespace, d.name)} />
   {/snippet}
 </ResourceTable>
 
