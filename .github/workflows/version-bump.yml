@@ -16,6 +16,7 @@ on:
 permissions:
   contents: write
   packages: write
+  actions: write
 
 jobs:
   version-bump:
@@ -57,13 +58,10 @@ jobs:
         git tag "v${{ env.NEW_VERSION }}"
         git push origin "v${{ env.NEW_VERSION }}"
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: "v${{ env.NEW_VERSION }}"
-        name: "KubeDesk v${{ env.NEW_VERSION }}"
-        generate_release_notes: true
-        draft: false
-        prerelease: false
+    # A release (instaladores e notas) é montada pelo workflow Release.
+    # Tag enviada com o GITHUB_TOKEN não dispara o push de tag, então ele
+    # é chamado direto, na tag nova.
+    - name: Start release build
+      run: gh workflow run release.yml --ref "v${{ env.NEW_VERSION }}"
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

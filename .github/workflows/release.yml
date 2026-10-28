@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # O Version Bump dispara por aqui: tag criada com o GITHUB_TOKEN não
+  # dispara o evento de push acima
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -65,6 +68,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # as notas listam os commits desde a tag anterior
 
     - name: Download all artifacts
       uses: actions/download-artifact@v4
