@@ -3,6 +3,7 @@
   import PodsTable from '../pods/PodsTable.svelte'
   import LogViewer from '../logs/LogViewer.svelte'
   import Section from './Section.svelte'
+  import { nav } from '../../lib/nav.svelte'
 
   // Pods escolhidos por um seletor (de deployment, de service), com os logs
   // do pod clicado logo abaixo.
@@ -21,7 +22,8 @@
 <Section title="Pods">
   {#if selector}
     <div class="table">
-      <PodsTable {namespace} labelSelector={selector} selected={logPod?.uid} onlogs={(p) => (logPod = p)} {emptyText} />
+      <PodsTable {namespace} labelSelector={selector} selected={logPod?.uid} onlogs={(p) => (logPod = p)}
+                 onopen={(p) => nav.go('pods', { namespace: p.namespace, name: p.name })} {emptyText} />
     </div>
     {#if logPod}
       <div class="logs">

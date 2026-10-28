@@ -81,6 +81,7 @@
     {#if unavailable}<span class="notice" title={unavailable}>Métricas indisponíveis: {unavailable}</span>{/if}
   {/snippet}
   {#snippet actions(p)}
+    {#if onopen}<IconButton icon="details" label="Detalhes de {p.name}" onclick={() => onopen(p)} />{/if}
     <IconButton icon="logs" label="Logs de {p.name}" onclick={() => onlogs(p)} />
     <IconButton icon="yaml" label="YAML de {p.name}" onclick={() => openYaml('pods', p.namespace, p.name)} />
   {/snippet}
