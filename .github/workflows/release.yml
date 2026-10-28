@@ -17,6 +17,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     strategy:
+      # Uma plataforma falhar não cancela as outras
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         include:
