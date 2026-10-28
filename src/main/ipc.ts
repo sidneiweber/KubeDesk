@@ -10,7 +10,8 @@ import { watchNamespaces } from './kube/namespaces'
 import { watchServices } from './kube/services'
 import { errorMessage } from './kube/errors'
 import { streamLogs } from './kube/logs'
-import { watchPods } from './kube/pods'
+import { watchPodMetrics } from './kube/metrics'
+import { deletePod, watchPods } from './kube/pods'
 import { resourceYaml } from './kube/yaml'
 import { PrefsStore } from './prefs'
 
@@ -118,6 +119,11 @@ export function registerIpc(): void {
     )
   })
 
+  handle('metrics:start', (event, id, namespace) => {
+    const target = event.sender
+    subscribe(id, watchPodMetrics(requireCluster(), namespace, (u) => send(target, 'metrics:update', id, u)))
+  })
+
   handle('logs:start', (event, id, opts) => {
     const target = event.sender
     subscribe(
@@ -136,6 +142,8 @@ export function registerIpc(): void {
 
   handle('deployment:scale', (_, namespace, name, replicas) => scaleDeployment(requireCluster(), namespace, name, replicas))
   handle('deployment:restart', (_, namespace, name) => restartDeployment(requireCluster(), namespace, name))
+
+  handle('pod:delete', (_, namespace, name) => deletePod(requireCluster(), namespace, name))
 
   handle('resource:yaml', (_, kind, namespace, name, managedFields) =>
     resourceYaml(requireCluster(), kind, namespace, name, managedFields))

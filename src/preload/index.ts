@@ -59,6 +59,13 @@ const api: KubeApi = {
       onError,
     ),
 
+  watchPodMetrics: (namespace, onUpdate) =>
+    subscribe(
+      (id) => invoke('metrics:start', id, namespace),
+      (id) => [on('metrics:update', id, onUpdate)],
+      (reason) => onUpdate({ available: false, reason, items: [], timestamp: Date.now() }),
+    ),
+
   streamLogs: (opts, onLines, onEnd) =>
     subscribe(
       (id) => invoke('logs:start', id, opts),
@@ -69,6 +76,7 @@ const api: KubeApi = {
   scaleDeployment: (namespace, name, replicas) => withCleanError(invoke('deployment:scale', namespace, name, replicas)),
   restartDeployment: (namespace, name) => withCleanError(invoke('deployment:restart', namespace, name)),
 
+  deletePod: (namespace, name) => withCleanError(invoke('pod:delete', namespace, name)),
   getYaml: (kind, namespace, name, managedFields = false) =>
     withCleanError(invoke('resource:yaml', kind, namespace, name, managedFields)),
   saveFile: (defaultName, content) => withCleanError(invoke('file:save', defaultName, content)),

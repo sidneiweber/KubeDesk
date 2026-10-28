@@ -19,6 +19,11 @@
     openUid = null
   })
 
+  const menu = (i: IngressRow) => [
+    { label: 'Detalhes', action: () => (openUid = i.uid) },
+    { label: 'YAML', action: () => openYaml('ingresses', i.namespace, i.name) },
+  ]
+
   const columns: Column<IngressRow>[] = $derived([
     { key: 'name', label: 'Nome', sort: (i) => i.name, text: (i) => i.name },
     ...(session.namespace === ''
@@ -45,6 +50,8 @@
 {:else}
   <ListPage title="Ingresses">
     <ResourceTable
+      id="ingresses"
+      {menu}
       rows={ingresses.rows}
       {columns}
       search={(i) => `${i.name} ${i.className} ${i.hosts.join(' ')} ${i.addresses.join(' ')}`}

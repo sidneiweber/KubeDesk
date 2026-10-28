@@ -15,6 +15,13 @@
     onrestart: (d: DeploymentRow) => void
   } = $props()
 
+  const menu = (d: DeploymentRow) => [
+    { label: 'Detalhes', action: () => onopen(d) },
+    { label: 'Escalar…', action: () => onscale(d) },
+    { label: 'Reiniciar…', action: () => onrestart(d) },
+    { label: 'YAML', action: () => openYaml('deployments', d.namespace, d.name) },
+  ]
+
   const columns: Column<DeploymentRow>[] = $derived([
     { key: 'name', label: 'Nome', sort: (d) => d.name, text: (d) => d.name },
     ...(namespace === ''
@@ -38,6 +45,8 @@
 {/snippet}
 
 <ResourceTable
+  id="deployments"
+  {menu}
   rows={deployments.rows}
   {columns}
   search={(d) => `${d.name} ${d.status} ${d.images.join(' ')}`}

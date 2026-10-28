@@ -66,6 +66,8 @@
 {:else}
   <ListPage title="Endpoints">
     <ResourceTable
+      id="endpoints"
+      menu={(g) => [{ label: 'Detalhes', action: () => (openUid = g.uid) }]}
       rows={groups}
       {columns}
       search={(g) => `${g.service} ${g.status} ${g.ready.join(' ')}`}

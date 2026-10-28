@@ -25,7 +25,9 @@ src/
 │       ├── pods.ts           # Linha de pod e watcher
 │       ├── deployments.ts    # Linha, status, watcher, escalar, reiniciar (+ teste)
 │       ├── namespaces.ts, services.ts, ingresses.ts, endpointSlices.ts (+ networking.test)
-│       ├── http.ts           # GET autenticado direto na API (logs, YAML)
+│       ├── http.ts           # GET autenticado direto na API (logs, YAML, métricas)
+│       ├── metrics.ts        # Leitura periódica de metrics.k8s.io (+ teste)
+│       ├── quantity.ts       # "250m", "128Mi" -> números (+ teste)
 │       ├── yaml.ts           # YAML no formato do kubectl (+ teste)
 │       └── meta.ts           # Datas da API em epoch ms
 ├── main/prefs.ts             # Preferências em JSON na pasta de dados (+ teste)
@@ -111,11 +113,14 @@ src/
 | Ingresses e detalhes (regras, TLS) | Portado |
 | Endpoints, já sobre `discovery.k8s.io/v1 EndpointSlice` | Portado |
 | YAML de pods, deployments, namespaces, services e ingresses, idêntico ao `kubectl get -o yaml` | Portado |
+| Métricas de CPU/memória dos pods (metrics.k8s.io), N/D sem metrics-server | Portado |
+| Seletor de colunas em todas as tabelas, salvo nas preferências | Portado |
+| Menu de contexto nas linhas (mouse, tecla Menu, Shift+F10) | Portado |
+| "Reiniciar pod" do app antigo, que não fazia nada, virou "Apagar pod" com confirmação | Portado |
 | YAML na tela de Endpoints (um service pode ter vários slices) | Falta |
-| Métricas de CPU/memória dos pods (`get-pods-metrics-batch`) | Falta |
-| Seletor de colunas com preferências salvas | Falta |
-| Menu de contexto nas linhas | Falta |
-| Logs: pausar, exportar/copiar, logs agregados de deployment | Falta |
+
+Fora do escopo, por decisão: extras dos logs (pausar, exportar, logs
+agregados de deployment).
 
 Todas as telas do app antigo existem na versão nova. O que ainda falta são
 recursos dentro delas (as linhas "Falta" acima). Quando acabarem: apagar

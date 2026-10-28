@@ -11,13 +11,20 @@
     text?: (row: R) => string
     cell?: Snippet<[R]>
     muted?: boolean
+    /** Começa escondida (o usuário pode mostrar pelo botão Colunas). */
+    hidden?: boolean
+    /** Não pode ser escondida. A primeira coluna sempre é fixa. */
+    fixed?: boolean
   }
 </script>
 
 <script lang="ts" generics="R extends { uid: string }">
   import { nextSort, sortRows, type Accessors } from '../../lib/sort'
+  import ColumnPicker from './ColumnPicker.svelte'
+  import ContextMenu, { type MenuItem } from './ContextMenu.svelte'
 
   let {
+    id,
     rows,
     columns,
     search,
@@ -30,7 +37,10 @@
     onactivate,
     actions,
     toolbar,
+    menu,
   }: {
+    /** Identifica a tabela nas preferências (colunas escondidas). */
+    id?: string
     rows: readonly R[]
     columns: Column<R>[]
     /** Texto em que o filtro procura. */
@@ -46,7 +56,49 @@
     onactivate?: (row: R) => void
     actions?: Snippet<[R]>
     toolbar?: Snippet
+    /** Itens do menu de contexto (botão direito, tecla Menu ou Shift+F10). */
+    menu?: (row: R) => MenuItem[]
   } = $props()
+
+  // Colunas escondidas: padrão das colunas, ou o que o usuário escolheu antes
+  // svelte-ignore state_referenced_locally
+  let hidden = $state<Set<string>>(new Set(columns.filter((c) => c.hidden).map((c) => c.key)))
+  const prefKey = $derived(id ? `columns:${id}` : '')
+
+  // Se o usuário mexer nas colunas antes de a preferência chegar do disco,
+  // a escolha dele vale: a leitura atrasada não pode sobrescrevê-la
+  let touched = false
+
+  $effect(() => {
+    if (!prefKey) return
+    window.kube.getPref(prefKey).then((v) => {
+      if (!touched && Array.isArray(v)) hidden = new Set(v.filter((k): k is string => typeof k === 'string'))
+    }).catch(() => {})
+  })
+
+  function setHidden(next: Set<string>) {
+    touched = true
+    hidden = next
+    if (prefKey) void window.kube.setPref(prefKey, [...next]).catch(() => {})
+  }
+
+  const isFixed = (c: Column<R>, i: number) => i === 0 || !!c.fixed
+  const shown = $derived(columns.filter((c, i) => isFixed(c, i) || !hidden.has(c.key)))
+  const pickable = $derived(columns.map((c, i) => ({ key: c.key, label: c.label, fixed: isFixed(c, i) })))
+
+  // Menu de contexto aberto: linha e posição
+  let menuAt = $state<{ row: R; x: number; y: number } | null>(null)
+
+  function openMenu(row: R, x: number, y: number) {
+    if (menu && menu(row).length) menuAt = { row, x, y }
+  }
+
+  function onRowMenu(e: MouseEvent, row: R) {
+    if (!menu) return
+    e.preventDefault()
+    ;(e.currentTarget as HTMLElement).focus()
+    openMenu(row, e.clientX, e.clientY)
+  }
 
   let filter = $state('')
   // svelte-ignore state_referenced_locally
@@ -69,7 +121,14 @@
   }
 
   function onRowKey(e: KeyboardEvent, row: R) {
-    if (e.key === 'Enter' && e.target === e.currentTarget) onactivate?.(row)
+    if (e.target !== e.currentTarget) return
+    if (e.key === 'Enter') onactivate?.(row)
+    // Tecla Menu ou Shift+F10: abre o menu junto à linha
+    if (menu && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) {
+      e.preventDefault()
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      openMenu(row, r.left + 24, r.bottom)
+    }
   }
 </script>
 
@@ -87,6 +146,9 @@
       {/if}
     </span>
     {@render toolbar?.()}
+    {#if id}
+      <span class="right"><ColumnPicker columns={pickable} {hidden} onchange={setHidden} /></span>
+    {/if}
   </div>
 
   {#if error}
@@ -97,7 +159,7 @@
     <table>
       <thead>
         <tr>
-          {#each columns as c (c.key)}
+          {#each shown as c (c.key)}
             <th aria-sort={c.sort ? ariaSort(c.key) : undefined}>
               {#if c.sort}
                 <button onclick={() => (sort = nextSort(sort, c.key))}>
@@ -114,9 +176,10 @@
       <tbody>
         {#each visible as row (row.uid)}
           <tr class:selected={row.uid === selected} class:clickable={onactivate}
-              tabindex={onactivate ? 0 : undefined}
-              ondblclick={() => onactivate?.(row)} onkeydown={(e) => onRowKey(e, row)}>
-            {#each columns as c (c.key)}
+              tabindex={onactivate || menu ? 0 : undefined}
+              ondblclick={() => onactivate?.(row)} onkeydown={(e) => onRowKey(e, row)}
+              oncontextmenu={(e) => onRowMenu(e, row)}>
+            {#each shown as c (c.key)}
               <td class:muted={c.muted}>
                 {#if c.cell}{@render c.cell(row)}{:else}{c.text?.(row) ?? ''}{/if}
               </td>
@@ -125,7 +188,7 @@
           </tr>
         {:else}
           {#if !loading && !error}
-            <tr><td class="empty" colspan={columns.length + (actions ? 1 : 0)}>{filter ? `Nenhum resultado para "${filter}"` : emptyText}</td></tr>
+            <tr><td class="empty" colspan={shown.length + (actions ? 1 : 0)}>{filter ? `Nenhum resultado para "${filter}"` : emptyText}</td></tr>
           {/if}
         {/each}
       </tbody>
@@ -133,8 +196,14 @@
   </div>
 </section>
 
+{#if menuAt && menu}
+  <ContextMenu x={menuAt.x} y={menuAt.y} items={menu(menuAt.row)} label="Ações" onclose={() => (menuAt = null)} />
+{/if}
+
 <style>
-  section { display: flex; flex-direction: column; min-height: 0; gap: 14px; }
+  /* min-width 0: sem isso a tabela larga empurra a página em vez de rolar na caixa */
+  section { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 14px; }
+  .right { margin-left: auto; }
   .toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .count { color: var(--muted); font-size: 13px; }
 

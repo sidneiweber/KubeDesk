@@ -19,6 +19,11 @@
     openUid = null
   })
 
+  const menu = (s: ServiceRow) => [
+    { label: 'Detalhes', action: () => (openUid = s.uid) },
+    { label: 'YAML', action: () => openYaml('services', s.namespace, s.name) },
+  ]
+
   // Mesmas colunas e formatos do `kubectl get services`
   const columns: Column<ServiceRow>[] = $derived([
     { key: 'name', label: 'Nome', sort: (s) => s.name, text: (s) => s.name },
@@ -42,6 +47,8 @@
 {:else}
   <ListPage title="Services">
     <ResourceTable
+      id="services"
+      {menu}
       rows={services.rows}
       {columns}
       search={(s) => `${s.name} ${s.type} ${s.clusterIP} ${s.externalIP} ${s.ports.join(' ')}`}

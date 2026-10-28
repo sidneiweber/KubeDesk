@@ -20,6 +20,11 @@
     nav.section = 'pods'
   }
 
+  const menu = (n: NamespaceRow) => [
+    { label: 'Ver pods', action: () => open(n) },
+    { label: 'YAML', action: () => openYaml('namespaces', '', n.name) },
+  ]
+
   const columns: Column<NamespaceRow>[] = [
     { key: 'name', label: 'Nome', sort: (n) => n.name, text: (n) => n.name },
     { key: 'status', label: 'Status', sort: (n) => n.status, cell: status },
@@ -38,6 +43,8 @@
 
 <ListPage title="Namespaces" namespace="">
   <ResourceTable
+    id="namespaces"
+    {menu}
     rows={namespaces.rows}
     {columns}
     search={(n) => `${n.name} ${n.status} ${Object.entries(n.labels).flat().join(' ')}`}

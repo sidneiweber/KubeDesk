@@ -28,6 +28,28 @@ export interface PodRow {
   /** Epoch em ms; a idade é calculada no renderer para poder andar sozinha. */
   created: number
   containers: string[]
+  /** Quem criou o pod, ex.: "ReplicaSet/web-5d4f"; vazio para pod avulso. */
+  owner: string
+  /** Soma dos containers; null = não declarado (limit: algum container sem limit). */
+  cpuRequest: number | null
+  cpuLimit: number | null
+  memoryRequest: number | null
+  memoryLimit: number | null
+}
+
+/** Uso de um pod, em milicores e bytes. key = "namespace/nome". */
+export interface PodUsage {
+  key: string
+  cpu: number
+  memory: number
+}
+
+export interface MetricsUpdate {
+  /** false = sem metrics-server ou sem permissão; reason diz qual. */
+  available: boolean
+  reason: string
+  items: PodUsage[]
+  timestamp: number
 }
 
 export type StatusClass = 'running' | 'succeeded' | 'pending' | 'failed' | 'unknown'
@@ -200,10 +222,14 @@ export interface KubeApi {
     onBatch: (b: Batch<WatchRows[K]>) => void,
     onError: (msg: string) => void,
   ): Unsubscribe
+  /** Uso de CPU/memória dos pods, lido periodicamente (metrics.k8s.io não tem watch). */
+  watchPodMetrics(namespace: string, onUpdate: (u: MetricsUpdate) => void): Unsubscribe
   streamLogs(opts: LogOptions, onLines: (lines: string[]) => void, onEnd: (error: string | null) => void): Unsubscribe
   scaleDeployment(namespace: string, name: string, replicas: number): Promise<void>
   /** Equivale a `kubectl rollout restart`. */
   restartDeployment(namespace: string, name: string): Promise<void>
+  /** Apaga o pod; o controlador dele (se houver) cria outro. */
+  deletePod(namespace: string, name: string): Promise<void>
   /** Objeto como o `kubectl get -o yaml`. managedFields omitido por padrão. */
   getYaml(kind: WatchKind, namespace: string, name: string, managedFields?: boolean): Promise<string>
   /** Abre "Salvar como". Devolve o caminho gravado, ou null se cancelou. */
@@ -222,9 +248,11 @@ export interface Invoke {
   'cluster:connect': { args: [context: string]; result: string[] }
   'watch:start': { args: [id: string, kind: WatchKind, opts: WatchOptions]; result: void }
   'logs:start': { args: [id: string, opts: LogOptions]; result: void }
+  'metrics:start': { args: [id: string, namespace: string]; result: void }
   'sub:stop': { args: [id: string]; result: void }
   'deployment:scale': { args: [namespace: string, name: string, replicas: number]; result: void }
   'deployment:restart': { args: [namespace: string, name: string]; result: void }
+  'pod:delete': { args: [namespace: string, name: string]; result: void }
   'resource:yaml': { args: [kind: WatchKind, namespace: string, name: string, managedFields: boolean]; result: string }
   'file:save': { args: [defaultName: string, content: string]; result: string | null }
   'prefs:get': { args: [key: string]; result: unknown }
@@ -234,6 +262,7 @@ export interface Invoke {
 export interface Events {
   'watch:batch': [id: string, batch: Batch<WatchRows[WatchKind]>]
   'watch:error': [id: string, message: string]
+  'metrics:update': [id: string, update: MetricsUpdate]
   'logs:lines': [id: string, lines: string[]]
   'logs:end': [id: string, error: string | null]
 }
