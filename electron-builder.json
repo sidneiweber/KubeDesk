@@ -1,13 +1,13 @@
 {
   "appId": "com.kubedesk.app",
-  "productName": "KubeDesk",
+  "productName": "Kubedesk",
   "directories": {
     "output": "dist",
     "buildResources": "assets"
   },
   "files": [
-    "src/**/*",
-    "assets/**/*",
+    "out/**/*",
+    "assets/icon-square.png",
     "package.json"
   ],
   "mac": {
@@ -22,7 +22,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "assets/icon.icns",
+    "icon": "assets/icon.png",
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "entitlements": "build/entitlements.mac.plist",
@@ -43,8 +43,10 @@
         "arch": ["x64", "ia32"]
       }
     ],
-    "icon": "assets/icon.ico",
-    "publisherName": "KubeDesk",
+    "icon": "assets/icon.png",
+    "signtoolOptions": {
+      "publisherName": "Kubedesk"
+    },
     "verifyUpdateCodeSignature": false
   },
   "linux": {
@@ -66,13 +68,15 @@
     "category": "Development",
     "executableName": "kubedesk",
     "maintainer": "Sidnei",
-    "vendor": "KubeDesk",
+    "vendor": "Kubedesk",
     "description": "Ferramenta para gerenciar clusters Kubernetes",
     "desktop": {
-      "Name": "KubeDesk",
-      "Comment": "Kubernetes Management Tool",
-      "Icon": "kubedesk",
-      "Categories": "Development;System;"
+      "entry": {
+        "Name": "Kubedesk",
+        "Comment": "Kubernetes Management Tool",
+        "Icon": "kubedesk",
+        "Categories": "Development;System;"
+      }
     },
     "synopsis": "Kubernetes cluster management tool"
   },

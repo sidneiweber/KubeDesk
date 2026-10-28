@@ -1,0 +1,14 @@
+<!-- Ícone do app: símbolo do kit de marca (variante sobre navy) num quadrado arredondado -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="228" fill="#0B2A5B"/>
+  <g transform="translate(512 512) scale(6.2) translate(-50 -58)">
+    <polygon fill="#1C8FD8" points="50,1 99,29.5 50,58 1,29.5"/>
+    <polygon fill="#0A1F45" points="1,29.5 50,58 50,115 1,86.5"/>
+    <polygon fill="#12A8E6" points="50,58 99,29.5 99,86.5 50,115"/>
+    <g fill="#0E5AA7" transform="matrix(0.49,-0.285,0,0.57,50,58)">
+      <rect x="22" y="14" width="17" height="78"/>
+      <polygon points="39,50 72,14 94,14 39,72"/>
+      <polygon points="50,60 62,48 96,92 74,92"/>
+    </g>
+  </g>
+</svg>

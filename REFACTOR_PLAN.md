@@ -1,158 +1,171 @@
-# Refatoração - KubeDesk
+# Reescrita - KubeDesk
 
-Este documento descreve a estrutura **que existe hoje** e o que ainda falta.
+O app está sendo reescrito do zero em **Electron + TypeScript + Svelte 5**, no
+branch `rewrite/electron-svelte-ts`. O código antigo está em `legacy/` só como
+referência para o porte, e sai do repositório quando a última tela for portada.
 
-> A versão anterior deste arquivo propunha uma árvore de ~40 arquivos
-> (`StateManager`, `EventBus`, `PreferenceService`, `shared/types/`...) que nunca
-> foi construída. Pior: a tentativa parcial de segui-la deixou 5 componentes
-> órfãos no repositório, que o `renderer.js` reimplementava inline — 1.400 linhas
-> que nunca rodaram. Um plano que descreve uma estrutura inexistente atrapalha
-> mais do que ajuda, então aqui só entra o que é real.
+Por que reescrever em vez de continuar extraindo módulos do `renderer.js`: o
+monolito de 3.776 linhas, o estado global e o `nodeIntegration: true` com
+`contextIsolation: false` estavam ligados entre si. Separar um exigia mexer em
+todos. A base nova já nasce com a separação, e cada tela é portada uma vez,
+direto para o formato final.
 
-## Estrutura atual
+## Arquitetura
 
 ```
 src/
-├── main.js                        # Processo principal: handlers IPC (763)
-├── main/
-│   └── services/
-│       ├── DeploymentService.js   # Operações com Deployments (329)
-│       └── LogService.js          # Streaming de logs (56)
-├── shared/
-│   ├── formatAge.js               # Formatação de idade, usada pelos dois processos (29)
-│   └── podStatus.js               # Status de pod no formato do kubectl (143)
-└── renderer/
-    ├── index.html                 # (986)
-    ├── renderer.js                # Monolito do renderer (3776)
-    ├── styles.css                 # (3666)
-    ├── utils/
-    │   └── dom.js                 # escapeHtml e downloadBlob (24)
-    └── components/
-        ├── LogViewer.js           # Terminal de logs via xterm.js (359)
-        ├── Logs/
-        │   └── LogsScreen.js      # Tela de logs: estado, streaming, exportação (838)
-        └── Services/
-            └── ServiceDetails.js  # Painel de detalhes de Service (208)
-
-test/
-├── run.js                         # Runner: roda cada *.test.js num processo (26)
-├── logs-screen.test.js            # Comportamento de LogsScreen, sem Electron (178)
-├── pod-status.test.js             # Status/ready no formato do kubectl (114)
-└── table-sort.test.js             # Ordenação das tabelas (65)
+├── main/                     # Processo principal: único lugar que fala com o cluster
+│   ├── index.ts              # Janela, segurança, ciclo de vida
+│   ├── ipc.ts                # Handlers tipados e registro de assinaturas
+│   └── kube/
+│       ├── connection.ts     # kubeconfig, contextos, conexão
+│       ├── errors.ts         # Mensagem legível a partir de erros da client-node
+│       ├── watch.ts          # Watch genérico em lotes (informer + reset + retry)
+│       ├── podStatus.ts      # Status no formato do kubectl (+ teste)
+│       ├── pods.ts           # Linha de pod e watcher
+│       ├── deployments.ts    # Linha, status, watcher, escalar, reiniciar (+ teste)
+│       ├── namespaces.ts, services.ts, ingresses.ts, endpointSlices.ts (+ networking.test)
+│       ├── http.ts           # GET autenticado direto na API (logs, YAML, métricas)
+│       ├── metrics.ts        # Leitura periódica de metrics.k8s.io (+ teste)
+│       ├── quantity.ts       # "250m", "128Mi" -> números (+ teste)
+│       ├── yaml.ts           # YAML no formato do kubectl (+ teste)
+│       └── meta.ts           # Datas da API em epoch ms
+├── main/prefs.ts             # Preferências em JSON na pasta de dados (+ teste)
+│       ├── logs.ts           # Stream de logs
+│       └── lineBatcher.ts    # Linhas inteiras, em lotes (+ teste)
+├── preload/index.ts          # Expõe window.kube; nada mais do Node chega à página
+├── shared/api.ts             # Contrato: tipos, canais invoke e canais de evento
+└── renderer/src/
+    ├── App.svelte
+    ├── components/
+    │   ├── table/            # ResourceTable (filtro, ordenação, vazio) e StatusPill
+    │   ├── detail/           # DetailPage, Section, Fields, Labels, PodsWithLogs
+    │   ├── ListPage, PageHeader, Logo, Modal, Toasts, ConnectScreen, Sidebar
+    │   └── pods/, deployments/, namespaces/, services/, ingresses/, endpoints/, logs/
+    └── lib/
+        ├── liveList.svelte.ts  # Lista ao vivo: abre/fecha o watch com o componente
+        ├── session.svelte.ts   # Contexto e namespace atuais (namespace lembrado por contexto)
+        ├── nav.svelte.ts       # Seção aberta
+        ├── endpoints.ts        # Agrupa EndpointSlices por service (+ teste)
+        ├── toasts.svelte.ts, now.svelte.ts
+        └── sort.ts, formatAge.ts (+ testes)
 ```
 
-Só existem componentes para o que é realmente usado. Não crie arquivo de
-componente sem ligá-lo a um call site no mesmo commit.
+### Regras
 
-## Convenções estabelecidas
+- **O renderer não tem Node.** `contextIsolation`, `sandbox` e sem
+  `nodeIntegration`. Tudo passa por `window.kube`, definido em
+  `src/preload/index.ts` e tipado em `KubeApi` (`src/shared/api.ts`).
+- **Todo canal IPC está em `shared/api.ts`.** `Invoke` lista os
+  request/response, com argumentos e retorno; `Events` lista os eventos do main
+  para o renderer. Um canal fora dessas interfaces não compila.
+- **Dados vivos usam assinatura, não polling.** `watch(kind, …)` e
+  `streamLogs` devolvem uma função de cancelar. No renderer, `LiveList` cuida
+  disso: abre o watch quando o componente aparece e fecha quando ele sai. O preload escolhe o id e registra os
+  listeners *antes* de pedir ao main para começar, senão o primeiro lote
+  poderia chegar antes de alguém estar ouvindo. O main encerra todas as
+  assinaturas ao trocar de cluster, ao recarregar a página e ao fechar a janela.
+- **O main entrega dados prontos para a tela.** `PodRow` e `DeploymentRow` já
+  vêm com status, cor e contagens calculados; o renderer não importa
+  `@kubernetes/client-node`. Se o detalhe de um recurso é pequeno, ele vai na
+  própria linha (como em `DeploymentRow`) e os detalhes ficam ao vivo sem
+  outro watch.
+- **Ações destrutivas pedem confirmação em `Modal`** e dizem o impacto real
+  (ex.: reiniciar com estratégia Recreate derruba o serviço). O resultado
+  aparece num toast; a tabela se atualiza sozinha pelo watch.
+- **YAML igual ao do kubectl**: chaves ordenadas, aspas duplas, listas sem
+  recuo extra e sem managedFields (opção no painel). Atenção: no js-yaml 5
+  as opções de estilo são `quoteStyle` e `seqNoIndent`; os nomes da v4 são
+  ignorados em silêncio pelo Vitest, só o typecheck acusa.
+- **Erros chegam com a mensagem do Kubernetes**, via `errorMessage()`, e não
+  com o dump de headers do `ApiException`.
+- **Nunca simular dados de medição.** Métrica indisponível é `null` e a UI
+  mostra `N/D` (regra mantida do app antigo).
+- **Preferências ficam no main** (`prefs:get`/`prefs:set`, arquivo
+  `preferences.json` na pasta de dados). O localStorage do renderer com
+  sandbox grava em disco com atraso e perde a última mudança se o app for
+  encerrado de forma abrupta; não use para nada que precise persistir.
+- **Sem CDN.** O app precisa funcionar offline; a CSP em `index.html` bloqueia
+  qualquer origem externa.
 
-- **Handlers IPC** que precisam de cluster usam `handleWithCluster(canal, descrição, fn)`,
-  que resolve o `connectionId` e prefixa erros. Não repita a busca no `activeConfigs`.
-- **Nunca simular dados de medição.** Se uma métrica não está disponível, o valor é
-  `null` e a UI mostra `N/D`. Um número plausível inventado é indistinguível de uma
-  medição real e destrói a confiança na ferramenta. Ver o commit
-  "Nunca exibir métricas simuladas como se fossem medições".
-- **Menus de contexto** usam `showContextMenu(event, items)` com `action` em closure.
-  Não interpole nomes de recurso em `onclick="..."`. Não sobrou nenhum handler
-  em atributo HTML, e o bloco de `window.<função> = ...` que os alimentava foi removido.
-- **Componentes do renderer** são módulos CommonJS carregados com `nodeRequire`
-  (como `LogViewer` e `LogsScreen`), não `<script>` + variável global. O
-  `ServiceDetails.js` ainda usa o padrão antigo e é a exceção a migrar.
-- **Componentes recebem o que precisam por injeção.** `LogsScreen` recebe
-  `ipcRenderer`, `getConnectionId`, `switchSection`, `showError`, `showToast` e
-  `showLoading` no construtor; não lê nenhuma global do `renderer.js`. Siga isso
-  nas próximas extrações — é o que torna a tela testável sem Electron.
-- **Código compartilhado entre main e renderer** vai em `src/shared/`, com `require`
-  dos dois lados (o renderer usa `nodeRequire`). O que é só do renderer e serve a
-  mais de um arquivo vai em `src/renderer/utils/`.
-- **Sem dependências de CDN.** O app precisa funcionar offline, e o renderer roda
-  com `nodeIntegration` ligado.
+### Gotchas da client-node 2.x
 
-## O que já foi feito
+- `makeInformer`: quando a listagem falha, emite `error` **e o `start()`
+  resolve mesmo assim**. Sem tratar isso, a falha vira uma tabela vazia
+  (`pods.ts` controla com a flag `failed`). Depois de um `error` o informer
+  para de vez e precisa de um novo `start()`.
+- `Log.log`: o callback de fim nunca é chamado e erros HTTP descartam o motivo.
+  Por isso `logs.ts` faz o fetch direto, com a mesma autenticação
+  (`applySecurityAuthentication`).
 
-| Commit | Efeito |
+## Status do porte
+
+| Tela / recurso | Status |
 |---|---|
-| `d41994d` | Remove 5 componentes órfãos e o caminho de menu de contexto nativo |
-| `ba0d2ae` | Elimina 3 pontos que fabricavam métricas com `Math.random()` |
-| `6cfaf81` | Extrai `handleWithCluster`; remove `LogParser.js` morto |
-| `416bc93` | Unifica menus de contexto e visualizadores de YAML |
-| `1202643` | Prism local, `formatAge` compartilhado, remove deps não usadas |
-| `26f1457` | Reescreve este arquivo para descrever o que existe |
-| (atual) | Implementa Ingresses e Endpoints, que tinham menu mas nenhum conteúdo |
-| (atual) | Extrai `LogsScreen` do `renderer.js` e cria os primeiros testes |
-| (atual) | Corrige status e ready dos pods, que mostravam verde para pod quebrado |
-| (atual) | Coluna de ações, ordenação por coluna e busca que não vai ao cluster |
+| Conexão (kubeconfig padrão ou arquivo, contexto) | Portado |
+| Pods: lista em tempo real, status do kubectl, ordenação, filtro local | Portado |
+| Logs de pod: container, tail, timestamps, follow, busca, linhas/s | Portado |
+| Deployments: lista, status do `rollout status`, escalar, reiniciar | Portado |
+| Detalhes do deployment: réplicas, condições, containers, labels, pods e logs | Portado |
+| Namespaces (abrir leva aos pods; lista da barra lateral ao vivo) | Portado |
+| Namespace lembrado por contexto | Portado |
+| Services e detalhes (portas, endpoints ao vivo, pods do seletor) | Portado |
+| Ingresses e detalhes (regras, TLS) | Portado |
+| Endpoints, já sobre `discovery.k8s.io/v1 EndpointSlice` | Portado |
+| YAML de pods, deployments, namespaces, services e ingresses, idêntico ao `kubectl get -o yaml` | Portado |
+| Métricas de CPU/memória dos pods (metrics.k8s.io), N/D sem metrics-server | Portado |
+| Seletor de colunas em todas as tabelas, salvo nas preferências | Portado |
+| Menu de contexto nas linhas (mouse, tecla Menu, Shift+F10) | Portado |
+| "Reiniciar pod" do app antigo, que não fazia nada, virou "Apagar pod" com confirmação | Portado |
+| YAML na tela de Endpoints (um service pode ter vários slices) | Falta |
 
-## O que ainda falta
+Fora do escopo, por decisão: extras dos logs (pausar, exportar, logs
+agregados de deployment).
 
-Em ordem de valor:
+Todas as telas do app antigo existem na versão nova. O que ainda falta são
+recursos dentro delas (as linhas "Falta" acima). Quando acabarem: apagar
+`legacy/`, `dev.sh` e `start.sh`.
 
-1. **`renderer.js` (3776 linhas) continua um monolito**, mesmo depois de a tela
-   de logs sair — as melhorias de usabilidade o fizeram crescer de novo. É de longe o maior problema restante. Os candidatos
-   naturais a extração, na ordem em que dão menos trabalho:
-   - Pods (`loadPods`, `updatePodsData`, `createPodRow`, `updatePodRow`, ~500 linhas)
-   - Deployments (`showDeploymentDetails`, `renderDeploymentDetails`, escala/restart, ~450 linhas)
-   - Networking (ingresses e endpoints, ~280 linhas, código recente e coeso)
-   - Preferências de colunas (`loadColumnPreferences`, `initializeColumnSelector`, ~180 linhas)
-   - Estado global: eram 24 variáveis soltas no topo, hoje são 12. As que sobraram
-     (`currentPodName`, `currentServiceName`, `currentYamlContent`...) saem junto
-     com as telas a que pertencem.
+## Como portar uma tela
 
-2. **`styles.css` (3666 linhas)** — sem divisão por área.
+Toda tela de lista segue o caminho de Deployments:
 
-3. **Testes: cobrem `LogsScreen`, o status dos pods e a ordenação.** `npm test`
-   roda `test/run.js`, que executa cada `*.test.js` num processo próprio. Não há
-   framework e não precisa ter. O que falta cobrir, em ordem de custo-benefício:
-   as funções puras do main (`formatAge`, `buildPodMetrics`,
-   `parseCpuToMillicores`, as projeções de ingress/endpoint) e cada componente
-   novo que sair do `renderer.js`.
+1. Ler o trecho em `legacy/` e listar o que a tela faz de fato.
+2. `shared/api.ts`: declarar `XxxRow` e incluir em `WatchRows`.
+3. `main/kube/xxx.ts`: `toXxxRow` e um watcher que chama `watchResource`.
+   Registrar o watcher em `watchers` (`main/ipc.ts`). Ações (escalar, apagar…)
+   viram canais em `Invoke`, expostos no preload.
+4. Renderer: `new LiveList('xxx', () => ({ namespace }))` e `ResourceTable`
+   com as colunas. Status usa `StatusPill`.
+5. Lógica pura (status, formatação, seletores) ganha teste `*.test.ts` ao lado.
+6. Marcar a tela como pronta na `Sidebar` e nesta tabela.
 
-   A engine de ordenação ainda mora dentro do `renderer.js`, então
-   `table-sort.test.js` extrai o trecho com `eval`. Quando ela virar módulo,
-   troque o recorte por um `require`.
+## Verificação
 
-4. **`nodeIntegration: true` + `contextIsolation: false`** (`src/main.js`) é a
-   configuração que o Electron desaconselha — o aviso de CSP aparece no console a
-   cada execução. Migrar exige um script de `preload` expondo uma API restrita e
-   trocar todos os `require`/`ipcRenderer` diretos do renderer. É trabalhoso e vale
-   a pena antes de qualquer distribuição mais ampla. A injeção de dependências do
-   `LogsScreen` já deixa essa migração mais barata: só o ponto de construção muda.
+- `npm test` — testes unitários (Vitest).
+- `npm run typecheck` — main, preload e renderer.
+- `npm run dev` contra um cluster real (o minikube serve) antes de dar a tela
+  como pronta.
 
-5. **`check-metrics-server`** está registrado e ninguém chama. Com as métricas agora
-   mostrando `N/D`, ele serviria para explicar o porquê na UI — ou deve ser removido.
+## Identidade visual
 
-6. **`v1 Endpoints` está deprecado a partir do Kubernetes 1.33**, em favor de
-   `discovery.k8s.io/v1 EndpointSlice`. A tela de Endpoints funciona hoje, mas a
-   migração vai ser necessária.
+O visual é o **tema escuro do layout original** (Inter e JetBrains Mono,
+paleta do commit `7a227af`). Do kit de marca ficaram só o
+**logo** (`components/Logo.svelte`, cubo + wordmark) e o **ícone do app**:
+o tema claro do kit foi testado e descartado em favor do layout antigo.
 
-7. **`reloadPod` só mostra "Funcionalidade em desenvolvimento"**, mas continua no
-   menu de contexto do pod como "Reiniciar". Reiniciar um pod é apagá-lo e deixar
-   o controlador recriar — ação destrutiva, que precisa de confirmação explícita.
-   Implementar ou tirar do menu: hoje é uma promessa que não se cumpre.
+- **Tokens** em `src/renderer/src/style.css`. Componentes usam só os papéis
+  (`--surface`, `--muted`, `--border`, `--ok`/`--ok-bg`…), nunca hex; as
+  cores da marca aparecem apenas dentro de `Logo.svelte`.
+- **Fontes** empacotadas em `src/renderer/src/assets/fonts` (o app funciona
+  offline; a CSP bloqueia fontes externas).
+- **Status** com ícone + texto (`StatusPill`), para não depender só da cor.
+- **Ícone do app**: `assets/icon.svg` é a fonte. Para regenerar os PNGs:
+  `magick -background none -density 384 assets/icon.svg -resize 1024x1024 assets/icon.png`
+  (idem para `icon-square.png` em 512 e `icons/NxN.png`). O electron-builder
+  gera o `.icns` e o `.ico` a partir de `assets/icon.png`.
 
-8. **Seletor de colunas só existe em Pods e Deployments.** Estender para Services,
-   Ingresses, Endpoints e Namespaces exige generalizar `initializeColumnSelector`
-   (hoje amarrado a `PODS_COLUMNS`/`DEPLOYMENTS_COLUMNS`) e um modal por seção.
-   Ficou de fora por custar bem mais que o resto e render menos: essas tabelas têm
-   de 4 a 7 colunas, que cabem na tela sem precisar esconder nada.
+## Pendências fora do código
 
-9. **Acessibilidade foi só o começo.** Há `role`, `aria-sort` e `aria-label` nos
-   pontos que mudaram, e foco visível em toda a superfície interativa. Faltam:
-   foco preso nos modais (focus trap), região `aria-live` para os toasts e
-   contexto de linha nas tabelas.
-
-## Como abordar
-
-Extrair um módulo por vez, com o call site ligado no mesmo commit, e conferir que
-o comportamento não mudou. Nunca deixe o arquivo novo e o código antigo convivendo:
-foi exatamente assim que as 1.400 linhas órfãs apareceram.
-
-O roteiro que funcionou para `LogsScreen`, para repetir nas próximas telas:
-
-1. Mapear o que é estado daquela tela e o que ela usa do `renderer.js`.
-2. Criar a classe recebendo essas dependências por injeção; ela resolve os
-   próprios elementos do DOM e registra os próprios listeners num `mount()`.
-3. Trocar os call sites e apagar o código antigo **no mesmo passo**.
-4. Conferir que nenhum símbolo removido ficou referenciado, e que nenhum
-   `elements.*` da tela extraída sobrou no `renderer.js`.
-5. Escrever o teste com DOM stub antes de considerar a extração pronta.
+- `electron-builder.json` aponta para `build/entitlements.mac.plist`, que não
+  existe no repositório. O build de macOS vai falhar até ele existir.

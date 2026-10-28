@@ -1,0 +1,329 @@
+// Contrato entre main, preload e renderer. Só tipos: nada daqui vai para o
+// bundle do renderer, que não pode importar @kubernetes/client-node.
+
+export interface KubeContext {
+  name: string
+  cluster: string
+  namespace: string
+  current: boolean
+}
+
+export interface KubeconfigInfo {
+  /** Arquivo escolhido pelo usuário, ou null para a regra padrão do kubectl. */
+  path: string | null
+  contexts: KubeContext[]
+}
+
+/** Linha da tabela de pods, já calculada no main. */
+export interface PodRow {
+  uid: string
+  name: string
+  namespace: string
+  status: string
+  statusClass: StatusClass
+  ready: string
+  restarts: number
+  node: string
+  ip: string
+  /** Epoch em ms; a idade é calculada no renderer para poder andar sozinha. */
+  created: number
+  containers: string[]
+  /** Quem criou o pod, ex.: "ReplicaSet/web-5d4f"; vazio para pod avulso. */
+  owner: string
+  /** Soma dos containers; null = não declarado (limit: algum container sem limit). */
+  cpuRequest: number | null
+  cpuLimit: number | null
+  memoryRequest: number | null
+  memoryLimit: number | null
+}
+
+/** Uso de um pod, em milicores e bytes. key = "namespace/nome". */
+export interface PodUsage {
+  key: string
+  cpu: number
+  memory: number
+  containers: { name: string; cpu: number; memory: number }[]
+}
+
+export interface ContainerDetail {
+  name: string
+  image: string
+  /** "Running", "Waiting", "Terminated" ou "" antes de ter status. */
+  state: string
+  /** Motivo do estado: CrashLoopBackOff, Completed, OOMKilled… */
+  reason: string
+  message: string
+  /** Desde quando está no estado atual (epoch ms). */
+  since: number
+  exitCode: number | null
+  ready: boolean
+  restarts: number
+  /** Motivo do último encerramento, ex.: "OOMKilled (137)". Vazio se nunca reiniciou. */
+  lastTermination: string
+  ports: string[]
+  cpuRequest: number | null
+  cpuLimit: number | null
+  memoryRequest: number | null
+  memoryLimit: number | null
+}
+
+/** Tudo o que a página de detalhe do pod mostra. */
+export interface PodDetail extends PodRow {
+  qosClass: string
+  serviceAccount: string
+  restartPolicy: string
+  priorityClass: string
+  hostIP: string
+  podIPs: string[]
+  startTime: number
+  initContainers: ContainerDetail[]
+  containerDetails: ContainerDetail[]
+  conditions: DeploymentCondition[]
+  /** "nome: tipo origem", ex.: "config: ConfigMap app-config". */
+  volumes: { name: string; kind: string; source: string }[]
+  labels: Record<string, string>
+  annotations: Record<string, string>
+}
+
+export interface EventRow {
+  uid: string
+  /** "Normal" ou "Warning". */
+  type: string
+  reason: string
+  message: string
+  count: number
+  /** Última ocorrência (epoch ms). */
+  last: number
+  first: number
+  /** Componente que reportou, ex.: "kubelet", "default-scheduler". */
+  source: string
+  object: string
+}
+
+export interface MetricsUpdate {
+  /** false = sem metrics-server ou sem permissão; reason diz qual. */
+  available: boolean
+  reason: string
+  items: PodUsage[]
+  timestamp: number
+}
+
+export type StatusClass = 'running' | 'succeeded' | 'pending' | 'failed' | 'unknown'
+
+export interface DeploymentCondition {
+  type: string
+  status: string
+  reason: string
+  message: string
+  lastTransition: number
+}
+
+export interface ContainerSpec {
+  name: string
+  image: string
+  ports: string[]
+  requests: Record<string, string>
+  limits: Record<string, string>
+}
+
+/**
+ * Linha da tabela de deployments. Leva também o que o painel de detalhes
+ * mostra: são poucos objetos, e assim os detalhes ficam ao vivo de graça.
+ */
+export interface DeploymentRow {
+  uid: string
+  name: string
+  namespace: string
+  status: string
+  statusClass: StatusClass
+  desired: number
+  ready: number
+  upToDate: number
+  available: number
+  created: number
+  images: string[]
+  strategy: string
+  paused: boolean
+  revision: string
+  /** Seletor no formato de label selector ("app=web,tier in (a,b)"). */
+  selector: string
+  labels: Record<string, string>
+  conditions: DeploymentCondition[]
+  containers: ContainerSpec[]
+}
+
+export interface NamespaceRow {
+  uid: string
+  name: string
+  status: string
+  statusClass: StatusClass
+  created: number
+  labels: Record<string, string>
+}
+
+export interface ServiceRow {
+  uid: string
+  name: string
+  namespace: string
+  type: string
+  /** "None" para headless, como o kubectl. */
+  clusterIP: string
+  /** Coluna EXTERNAL-IP do kubectl: IPs, "<pending>" ou "<none>". */
+  externalIP: string
+  /** Coluna PORT(S) do kubectl: "80:30080/TCP". */
+  ports: string[]
+  /** Portas com nome e targetPort, para os detalhes. */
+  portDetails: { name: string; port: number; targetPort: string; nodePort: number | null; protocol: string }[]
+  /** Seletor de pods; vazio quando o service não seleciona pods (endpoints manuais, ExternalName). */
+  selector: string
+  sessionAffinity: string
+  created: number
+  labels: Record<string, string>
+}
+
+export interface IngressRule {
+  host: string
+  path: string
+  pathType: string
+  /** "service:porta" ou "Kind/nome" para backends de recurso. */
+  backend: string
+}
+
+export interface IngressRow {
+  uid: string
+  name: string
+  namespace: string
+  className: string
+  hosts: string[]
+  /** IPs/hostnames atribuídos pelo controller; vazio até ser programado. */
+  addresses: string[]
+  /** "80" ou "80, 443" quando há TLS, como o kubectl. */
+  ports: string
+  rules: IngressRule[]
+  tls: { hosts: string[]; secretName: string }[]
+  created: number
+  labels: Record<string, string>
+}
+
+export interface SliceEndpoint {
+  addresses: string[]
+  /** null = desconhecido; a API manda tratar como pronto. */
+  ready: boolean
+  terminating: boolean
+  pod: string
+  node: string
+}
+
+export interface EndpointSliceRow {
+  uid: string
+  name: string
+  namespace: string
+  /** Label kubernetes.io/service-name; vazio em slices criados à mão. */
+  service: string
+  addressType: string
+  ports: { name: string; port: number; protocol: string }[]
+  endpoints: SliceEndpoint[]
+  created: number
+}
+
+/** Lote de mudanças de uma lista. reset=true: substitua tudo. */
+export interface Batch<R> {
+  reset: boolean
+  upsert: R[]
+  /** UIDs. */
+  deleted: string[]
+}
+
+/** Tipo de linha de cada recurso observável. */
+export interface WatchRows {
+  pods: PodRow
+  deployments: DeploymentRow
+  namespaces: NamespaceRow
+  services: ServiceRow
+  ingresses: IngressRow
+  endpointslices: EndpointSliceRow
+  /** Um pod só, com tudo para a página de detalhe (fieldSelector metadata.name). */
+  poddetails: PodDetail
+  events: EventRow
+}
+export type WatchKind = keyof WatchRows
+
+export interface WatchOptions {
+  /** "" = todos. Ignorado em recursos sem namespace (namespaces). */
+  namespace: string
+  labelSelector?: string
+  /** Ex.: "metadata.name=web-1", "involvedObject.uid=…". */
+  fieldSelector?: string
+}
+
+export interface LogOptions {
+  namespace: string
+  pod: string
+  container: string
+  /** 0 = todas as linhas. */
+  tailLines: number
+  timestamps: boolean
+  follow: boolean
+}
+
+/** Função que encerra uma assinatura (watch ou stream). */
+export type Unsubscribe = () => void
+
+/** API exposta em window.kube pelo preload. */
+export interface KubeApi {
+  kubeconfig(): Promise<KubeconfigInfo>
+  /** Abre o seletor de arquivo. null se o usuário cancelou. */
+  selectKubeconfig(): Promise<KubeconfigInfo | null>
+  /** Conecta e devolve os namespaces (vazio se não houver permissão para listar). */
+  connect(context: string): Promise<string[]>
+  /** Observa uma lista. O primeiro lote (reset) é a lista completa. */
+  watch<K extends WatchKind>(
+    kind: K,
+    opts: WatchOptions,
+    onBatch: (b: Batch<WatchRows[K]>) => void,
+    onError: (msg: string) => void,
+  ): Unsubscribe
+  /** Uso de CPU/memória dos pods, lido periodicamente (metrics.k8s.io não tem watch). */
+  watchPodMetrics(namespace: string, onUpdate: (u: MetricsUpdate) => void): Unsubscribe
+  streamLogs(opts: LogOptions, onLines: (lines: string[]) => void, onEnd: (error: string | null) => void): Unsubscribe
+  scaleDeployment(namespace: string, name: string, replicas: number): Promise<void>
+  /** Equivale a `kubectl rollout restart`. */
+  restartDeployment(namespace: string, name: string): Promise<void>
+  /** Apaga o pod; o controlador dele (se houver) cria outro. */
+  deletePod(namespace: string, name: string): Promise<void>
+  /** Objeto como o `kubectl get -o yaml`. managedFields omitido por padrão. */
+  getYaml(kind: WatchKind, namespace: string, name: string, managedFields?: boolean): Promise<string>
+  /** Abre "Salvar como". Devolve o caminho gravado, ou null se cancelou. */
+  saveFile(defaultName: string, content: string): Promise<string | null>
+  /** Preferências do usuário, gravadas em disco pelo main. */
+  getPref(key: string): Promise<unknown>
+  setPref(key: string, value: unknown): Promise<void>
+}
+
+// Canais IPC. Os de invoke têm argumentos e retorno tipados em Invoke; os de
+// evento levam sempre o id da assinatura como primeiro argumento.
+
+export interface Invoke {
+  'kubeconfig:get': { args: []; result: KubeconfigInfo }
+  'kubeconfig:select': { args: []; result: KubeconfigInfo | null }
+  'cluster:connect': { args: [context: string]; result: string[] }
+  'watch:start': { args: [id: string, kind: WatchKind, opts: WatchOptions]; result: void }
+  'logs:start': { args: [id: string, opts: LogOptions]; result: void }
+  'metrics:start': { args: [id: string, namespace: string]; result: void }
+  'sub:stop': { args: [id: string]; result: void }
+  'deployment:scale': { args: [namespace: string, name: string, replicas: number]; result: void }
+  'deployment:restart': { args: [namespace: string, name: string]; result: void }
+  'pod:delete': { args: [namespace: string, name: string]; result: void }
+  'resource:yaml': { args: [kind: WatchKind, namespace: string, name: string, managedFields: boolean]; result: string }
+  'file:save': { args: [defaultName: string, content: string]; result: string | null }
+  'prefs:get': { args: [key: string]; result: unknown }
+  'prefs:set': { args: [key: string, value: unknown]; result: void }
+}
+
+export interface Events {
+  'watch:batch': [id: string, batch: Batch<WatchRows[WatchKind]>]
+  'watch:error': [id: string, message: string]
+  'metrics:update': [id: string, update: MetricsUpdate]
+  'logs:lines': [id: string, lines: string[]]
+  'logs:end': [id: string, error: string | null]
+}

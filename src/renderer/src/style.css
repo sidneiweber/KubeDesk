@@ -1,0 +1,98 @@
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('./assets/fonts/Inter-SemiBold.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('./assets/fonts/JetBrainsMono-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+/* Tema escuro do layout original. Os componentes usam só estes papéis;
+   as cores da marca ficam restritas ao logo (Logo.svelte) e ao ícone. */
+:root {
+  --bg: #1a1a1a;
+  --surface: #2d2d2d;
+  --surface-2: #363636;
+  --surface-sunken: #141414;
+  --border: #404040;
+  --border-subtle: #262626;
+  --text: #ffffff;
+  --text-2: #d4d4d4;
+  --muted: #a0a0a0;
+  --accent: #4a9eff;
+  --focus: #4a9eff;
+
+  --row-hover: #222222;
+  --row-selected: rgba(74, 158, 255, .12);
+  --head-bg: var(--surface);
+
+  /* Status: cor do texto e fundo tingido da pill */
+  --ok: #4ade80;   --ok-bg: rgba(74, 222, 128, .15);
+  --pend: #fbbf24; --pend-bg: rgba(251, 191, 36, .15);
+  --fail: #ef4444; --fail-bg: rgba(239, 68, 68, .15); --fail-text: #fca5a5;
+  --done: #a78bfa; --done-bg: rgba(167, 139, 250, .15);
+  --unk: #a0a0a0;  --unk-bg: #363636;
+
+  --term-bg: #141414;
+
+  --sans: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #app { height: 100%; }
+
+body {
+  font-family: var(--sans);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+code, .mono { font-family: var(--mono); }
+
+select, input, button {
+  font: inherit;
+  color: inherit;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+}
+input[type='checkbox'] { padding: 0; accent-color: var(--accent); }
+
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled, select:disabled, input:disabled { opacity: .5; cursor: default; }
+
+button.primary { background: var(--accent); border-color: var(--accent); color: #0b1a2b; font-weight: 600; }
+button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+
+button.danger { background: var(--fail); border-color: var(--fail); color: #fff; font-weight: 600; }
+button.danger:hover:not(:disabled) { filter: brightness(1.1); }
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+
+/* Título de seção: pequeno, maiúsculo, discreto */
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+.error-box {
+  padding: 8px 12px;
+  border: 1px solid var(--fail);
+  border-radius: 6px;
+  background: rgba(239, 68, 68, .12);
+  color: var(--fail-text);
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+/* Tabela pequena das páginas de detalhe (condições, regras, portas) */
+.detail-table { width: 100%; border-collapse: collapse; }
+.detail-table th { text-align: left; font-weight: 500; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.detail-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; user-select: text; }
+.detail-table td:first-child { font-weight: 500; }
+.detail-table td.mono { font-family: var(--mono); font-size: 12px; }
+.detail-table td.text { white-space: normal; }
+.detail-table td.ok { color: var(--ok); }
+.detail-table td.bad { color: var(--fail); }

@@ -23,8 +23,8 @@ Aqui estão algumas capturas de tela da aplicação:
 
 ## 📋 Pré-requisitos
 
-- Node.js 16 ou superior
-- npm ou yarn
+- Node.js 22.12 ou superior
+- npm
 - Arquivo kubeconfig configurado
 
 ## 🛠️ Instalação
@@ -45,20 +45,27 @@ npm install
 npm start
 ```
 
-Para desenvolvimento:
+Para desenvolvimento (recarrega o renderer ao salvar):
 ```bash
 npm run dev
 ```
 
-## 🏗️ Build
-
-Para criar um executável:
-
+Testes e checagem de tipos:
 ```bash
-npm run build
+npm test
+npm run typecheck
 ```
 
-Os arquivos de distribuição serão criados na pasta `dist/`.
+## 🏗️ Build
+
+Para criar os instaladores:
+
+```bash
+npm run dist          # sistema atual
+npm run dist:linux    # ou dist:win / dist:mac
+```
+
+Os instaladores são criados em `dist/`. O `npm run build` só compila o app para `out/`.
 
 ## 📖 Como Usar
 
@@ -73,7 +80,7 @@ Os arquivos de distribuição serão criados na pasta `dist/`.
    - Filtre por namespace usando o seletor no topo
    - Use a caixa de busca para encontrar recursos específicos
 
-4. **Atualização**: Clique no botão "Atualizar" para sincronizar com o cluster
+4. **Atualização**: a lista de pods acompanha o cluster em tempo real (watch), sem precisar atualizar
 
 ## 🎯 Recursos Disponíveis
 
@@ -87,24 +94,30 @@ Os arquivos de distribuição serão criados na pasta `dist/`.
 ### Estrutura do Projeto
 
 ```
-kubernetes-tool/
-├── src/
-│   ├── main.js              # Processo principal do Electron
-│   └── renderer/
-│       ├── index.html       # Interface principal
-│       ├── styles.css       # Estilos CSS
-│       └── renderer.js      # Lógica do renderer
-├── assets/                  # Recursos estáticos
-├── package.json            # Configuração do projeto
-└── README.md              # Este arquivo
+src/
+├── main/                 # Processo principal (Node): fala com o cluster
+│   ├── index.ts          # Janela e segurança
+│   ├── ipc.ts            # Handlers IPC e assinaturas (watch, logs)
+│   └── kube/             # Conexão, status de pods, watch, logs
+├── preload/index.ts      # Única ponte entre a página e o Node (window.kube)
+├── shared/api.ts         # Tipos do contrato entre os processos
+└── renderer/             # Interface em Svelte 5, sem acesso ao Node
+    └── src/
+        ├── components/   # Telas
+        └── lib/          # Estado da sessão, ordenação, formatação
+legacy/                   # App antigo, referência até o porte terminar
 ```
+
+Detalhes da arquitetura e do que falta portar em `REFACTOR_PLAN.md`.
 
 ### Tecnologias Utilizadas
 
-- **Electron**: Framework para aplicações desktop
-- **@kubernetes/client-node**: Cliente oficial do Kubernetes para Node.js
-- **js-yaml**: Parser para arquivos YAML
-- **CSS Grid/Flexbox**: Layout responsivo
+- **Electron** com `contextIsolation` e `sandbox`
+- **TypeScript**, **Svelte 5** e **electron-vite**
+- **@kubernetes/client-node**: cliente oficial do Kubernetes para Node.js
+- **xterm.js**: visualizador de logs
+- **Inter e JetBrains Mono**: tipografia, empacotada no app
+- **Vitest**: testes
 
 ## 🚧 Roadmap
 
