@@ -27,7 +27,7 @@
 
   // Mesmas colunas e formatos do `kubectl get services`
   const columns: Column<ServiceRow>[] = $derived([
-    { key: 'name', label: 'Nome', sort: (s) => s.name, text: (s) => s.name },
+    { key: 'name', label: 'Nome', sort: (s) => s.name, text: (s) => s.name, link: true },
     ...(session.namespace === ''
       ? [{ key: 'namespace', label: 'Namespace', sort: (s: ServiceRow) => s.namespace, text: (s: ServiceRow) => s.namespace }]
       : []),

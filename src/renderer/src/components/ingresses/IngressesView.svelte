@@ -26,7 +26,7 @@
   ]
 
   const columns: Column<IngressRow>[] = $derived([
-    { key: 'name', label: 'Nome', sort: (i) => i.name, text: (i) => i.name },
+    { key: 'name', label: 'Nome', sort: (i) => i.name, text: (i) => i.name, link: true },
     ...(session.namespace === ''
       ? [{ key: 'namespace', label: 'Namespace', sort: (i: IngressRow) => i.namespace, text: (i: IngressRow) => i.namespace }]
       : []),

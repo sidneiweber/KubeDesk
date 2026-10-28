@@ -13,6 +13,8 @@
     /** Números, idades, IPs: fonte monoespaçada. */
     mono?: boolean
     muted?: boolean
+    /** O texto vira link que abre o recurso (chama onactivate). */
+    link?: boolean
     /** Começa escondida (o usuário pode mostrar pelo botão Colunas). */
     hidden?: boolean
     /** Não pode ser escondida. A primeira coluna sempre é fixa. */
@@ -180,7 +182,13 @@
               oncontextmenu={(e) => onRowMenu(e, row)}>
             {#each shown as c (c.key)}
               <td class:mono={c.mono} class:muted={c.muted}>
-                {#if c.cell}{@render c.cell(row)}{:else}{c.text?.(row) ?? ''}{/if}
+                {#if c.cell}
+                  {@render c.cell(row)}
+                {:else if c.link && onactivate}
+                  <button class="link" onclick={() => onactivate(row)}>{c.text?.(row) ?? ''}</button>
+                {:else}
+                  {c.text?.(row) ?? ''}
+                {/if}
               </td>
             {/each}
             {#if actions}<td class="actions">{@render actions(row)}</td>{/if}
@@ -223,6 +231,10 @@
   tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
   tr.selected, tr.selected:hover { background: var(--row-selected); }
   .mono { font-family: var(--mono); font-size: 12px; }
+  /* Nome que abre os detalhes: parece link, não botão */
+  .link { all: unset; cursor: pointer; color: var(--accent); font-weight: 500; }
+  .link:hover { text-decoration: underline; }
+  .link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
   .muted { color: var(--muted); }
   .empty { text-align: center; color: var(--muted); padding: 32px; font-weight: 400; }
   .actions { text-align: right; user-select: none; padding-top: 3px; padding-bottom: 3px; }

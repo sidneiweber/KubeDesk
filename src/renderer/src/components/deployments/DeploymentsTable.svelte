@@ -24,7 +24,7 @@
   ]
 
   const columns: Column<DeploymentRow>[] = $derived([
-    { key: 'name', label: 'Nome', sort: (d) => d.name, text: (d) => d.name },
+    { key: 'name', label: 'Nome', sort: (d) => d.name, text: (d) => d.name, link: true },
     ...(namespace === ''
       ? [{ key: 'namespace', label: 'Namespace', sort: (d: DeploymentRow) => d.namespace, text: (d: DeploymentRow) => d.namespace }]
       : []),

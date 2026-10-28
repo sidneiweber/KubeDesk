@@ -27,7 +27,7 @@
   })
 
   const columns: Column<ServiceEndpoints>[] = $derived([
-    { key: 'name', label: 'Service', sort: (g) => g.service, text: (g) => g.service },
+    { key: 'name', label: 'Service', sort: (g) => g.service, text: (g) => g.service, link: true },
     ...(session.namespace === ''
       ? [{ key: 'namespace', label: 'Namespace', sort: (g: ServiceEndpoints) => g.namespace, text: (g: ServiceEndpoints) => g.namespace }]
       : []),
