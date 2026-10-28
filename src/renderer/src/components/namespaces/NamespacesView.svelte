@@ -17,7 +17,7 @@
 
   function open(n: NamespaceRow) {
     session.namespace = n.name
-    nav.section = 'pods'
+    nav.go('pods')
   }
 
   const menu = (n: NamespaceRow) => [

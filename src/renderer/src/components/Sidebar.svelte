@@ -64,7 +64,7 @@
           <li>
             <button class:active={nav.section === item.id}
                     aria-current={nav.section === item.id ? 'page' : undefined}
-                    onclick={() => (nav.section = item.id)}>
+                    onclick={() => nav.go(item.id)}>
               {item.label}
             </button>
           </li>

@@ -26,8 +26,9 @@
   <div class="layout">
     <Sidebar />
     <main>
-      <!-- Recria a tela ao trocar de contexto, para não sobrar estado do cluster anterior -->
-      {#key session.context}
+      <!-- Recria a tela ao trocar de contexto (para não sobrar estado do cluster
+           anterior) e a cada clique no menu (para voltar à lista) -->
+      {#key `${session.context}:${nav.visit}`}
         {#if nav.section === 'pods'}
           <PodsView />
         {:else if nav.section === 'deployments'}
