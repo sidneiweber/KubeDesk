@@ -1,4 +1,6 @@
-export type Section = 'pods' | 'deployments' | 'namespaces' | 'services' | 'ingresses' | 'endpoints'
+import type { WorkloadKind } from '@shared/api'
+
+export type Section = 'pods' | WorkloadKind | 'namespaces' | 'services' | 'ingresses' | 'endpoints'
 
 // Seção aberta. Fica fora do App para que uma tela possa levar a outra
 // (ex.: abrir um namespace leva aos pods dele).

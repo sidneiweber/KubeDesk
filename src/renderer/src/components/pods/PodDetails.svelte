@@ -14,6 +14,7 @@
   import Section from '../detail/Section.svelte'
   import Fields from '../detail/Fields.svelte'
   import Labels from '../detail/Labels.svelte'
+  import EventsTable from '../detail/EventsTable.svelte'
   import LogViewer from '../logs/LogViewer.svelte'
   import DeletePodDialog from './DeletePodDialog.svelte'
 
@@ -24,10 +25,6 @@
 
   const pods = new LiveList('poddetails', () => ({ namespace, fieldSelector: `metadata.name=${name}` }))
   const pod = $derived<PodDetail | undefined>(pods.rows[0])
-
-  const uid = $derived(pod?.uid)
-  const events = new LiveList('events', () => (uid ? { namespace, fieldSelector: `involvedObject.uid=${uid}` } : null))
-  const sortedEvents = $derived([...events.rows].sort((a, b) => b.last - a.last))
 
   const metrics = new PodMetrics(() => namespace)
   const usage = $derived(metrics.of(namespace, name))
@@ -126,27 +123,7 @@
     </Section>
 
     <Section title="Eventos">
-      {#if events.error}
-        <p class="muted">Não foi possível ler os eventos: {events.error}</p>
-      {:else if sortedEvents.length === 0}
-        <p class="muted">{events.loading ? 'Carregando…' : 'Nenhum evento recente (o cluster costuma guardar só a última hora).'}</p>
-      {:else}
-        <table class="detail-table">
-          <thead><tr><th>Tipo</th><th>Motivo</th><th>Mensagem</th><th>Vezes</th><th>Última</th><th>Origem</th></tr></thead>
-          <tbody>
-            {#each sortedEvents as e (e.uid)}
-              <tr>
-                <td class:bad={e.type === 'Warning'}>{e.type}</td>
-                <td>{e.reason}</td>
-                <td class="text">{e.message}</td>
-                <td class="mono">{e.count}</td>
-                <td class="mono" title={formatDateTime(e.last)}>{ago(e.last)}</td>
-                <td>{e.source || '-'}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      {/if}
+      <EventsTable {namespace} uid={pod.uid} />
     </Section>
 
     <Section title="Condições">

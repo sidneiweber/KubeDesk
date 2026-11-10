@@ -3,7 +3,7 @@ import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type Open
 import type { KubeConfig } from '@kubernetes/client-node'
 import type { Batch, Events, Invoke, KubeconfigInfo, WatchKind, WatchOptions, WatchRows } from '@shared/api'
 import { connect, listContexts, loadKubeconfig } from './kube/connection'
-import { restartDeployment, scaleDeployment, watchDeployments } from './kube/deployments'
+import { watchDeployments } from './kube/deployments'
 import { watchEndpointSlices } from './kube/endpointSlices'
 import { watchIngresses } from './kube/ingresses'
 import { watchNamespaces } from './kube/namespaces'
@@ -13,7 +13,16 @@ import { errorMessage } from './kube/errors'
 import { streamLogs } from './kube/logs'
 import { watchPodMetrics } from './kube/metrics'
 import { deletePod, watchPodDetails, watchPods } from './kube/pods'
-import { resourceYaml } from './kube/yaml'
+import { restartWorkload, rollbackWorkload, scaleWorkload, suspendCronJob, triggerCronJob } from './kube/workloadActions'
+import {
+  watchControllerRevisions,
+  watchCronJobs,
+  watchDaemonSets,
+  watchJobs,
+  watchReplicaSets,
+  watchStatefulSets,
+} from './kube/workloads'
+import { applyYaml, resourceYaml } from './kube/yaml'
 import { PrefsStore } from './prefs'
 
 // Estado da sessão. Uma janela só, então um cluster ativo por vez.
@@ -49,6 +58,12 @@ const watchers: { [K in WatchKind]: Watcher<K> } = {
   endpointslices: watchEndpointSlices,
   poddetails: watchPodDetails,
   events: watchEvents,
+  replicasets: watchReplicaSets,
+  daemonsets: watchDaemonSets,
+  statefulsets: watchStatefulSets,
+  jobs: watchJobs,
+  cronjobs: watchCronJobs,
+  controllerrevisions: watchControllerRevisions,
 }
 
 function requireCluster(): KubeConfig {
@@ -143,13 +158,17 @@ export function registerIpc(): void {
     )
   })
 
-  handle('deployment:scale', (_, namespace, name, replicas) => scaleDeployment(requireCluster(), namespace, name, replicas))
-  handle('deployment:restart', (_, namespace, name) => restartDeployment(requireCluster(), namespace, name))
+  handle('workload:scale', (_, kind, namespace, name, replicas) => scaleWorkload(requireCluster(), kind, namespace, name, replicas))
+  handle('workload:restart', (_, kind, namespace, name) => restartWorkload(requireCluster(), kind, namespace, name))
+  handle('workload:rollback', (_, kind, namespace, name, revision) => rollbackWorkload(requireCluster(), kind, namespace, name, revision))
+  handle('cronjob:suspend', (_, namespace, name, suspend) => suspendCronJob(requireCluster(), namespace, name, suspend))
+  handle('cronjob:trigger', (_, namespace, name) => triggerCronJob(requireCluster(), namespace, name))
 
   handle('pod:delete', (_, namespace, name) => deletePod(requireCluster(), namespace, name))
 
   handle('resource:yaml', (_, kind, namespace, name, managedFields) =>
     resourceYaml(requireCluster(), kind, namespace, name, managedFields))
+  handle('resource:apply', (_, kind, namespace, name, yaml) => applyYaml(requireCluster(), kind, namespace, name, yaml))
 
   handle('file:save', async (event, defaultName, content) => {
     const win = BrowserWindow.fromWebContents(event.sender)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { V1Deployment } from '@kubernetes/client-node'
-import { deploymentStatus, labelSelectorString } from './deployments'
+import type { V1Deployment, V1ReplicaSet } from '@kubernetes/client-node'
+import { deploymentStatus, labelSelectorString, rollbackTemplate } from './deployments'
+import { toReplicaSetRow } from './workloads'
 
 interface Opts {
   desired?: number
@@ -62,5 +63,45 @@ describe('labelSelectorString', () => {
 
   it('sem seletor vira string vazia', () => {
     expect(labelSelectorString(undefined)).toBe('')
+  })
+})
+
+describe('rollbackTemplate', () => {
+  const rs = {
+    metadata: { name: 'web-abc' },
+    spec: {
+      selector: {},
+      template: {
+        metadata: { labels: { app: 'web', 'pod-template-hash': 'abc' } },
+        spec: { containers: [{ name: 'web', image: 'nginx:1.25' }] },
+      },
+    },
+  } as V1ReplicaSet
+
+  it('tira o pod-template-hash e mantém o resto', () => {
+    expect(rollbackTemplate(rs)).toEqual({
+      metadata: { labels: { app: 'web' } },
+      spec: { containers: [{ name: 'web', image: 'nginx:1.25' }] },
+    })
+  })
+
+  it('não altera o ReplicaSet original', () => {
+    rollbackTemplate(rs)
+    expect(rs.spec?.template?.metadata?.labels?.['pod-template-hash']).toBe('abc')
+  })
+})
+
+describe('toReplicaSetRow', () => {
+  it('lê revisão, dono e motivo das anotações', () => {
+    const row = toReplicaSetRow({
+      metadata: {
+        uid: 'u1', name: 'web-abc', namespace: 'prod',
+        annotations: { 'deployment.kubernetes.io/revision': '3', 'kubernetes.io/change-cause': 'nova imagem' },
+        ownerReferences: [{ apiVersion: 'apps/v1', kind: 'Deployment', name: 'web', uid: 'd1', controller: true }],
+      },
+      spec: { replicas: 2, selector: {}, template: { spec: { containers: [{ name: 'web', image: 'nginx:1.25' }] } } },
+      status: { replicas: 2, readyReplicas: 1 },
+    } as V1ReplicaSet)
+    expect(row).toMatchObject({ revision: 3, owner: { kind: 'Deployment', name: 'web', uid: 'd1' }, changeCause: 'nova imagem', desired: 2, ready: 1, available: 0, images: ['nginx:1.25'] })
   })
 })

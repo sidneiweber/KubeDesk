@@ -1,15 +1,9 @@
-import {
-  AppsV1Api,
-  PatchStrategy,
-  setHeaderOptions,
-  type KubeConfig,
-  type V1Deployment,
-  type V1LabelSelector,
-} from '@kubernetes/client-node'
+import { AppsV1Api, type KubeConfig, type V1Deployment, type V1PodTemplateSpec, type V1ReplicaSet } from '@kubernetes/client-node'
 import type { Batch, DeploymentRow, StatusClass, WatchOptions } from '@shared/api'
-import { errorMessage } from './errors'
-import { millis } from './meta'
 import { resourcePath, watchResource } from './watch'
+import { labelSelectorString, workloadBase } from './workloads'
+
+export { labelSelectorString }
 
 /**
  * Status de um deployment, seguindo a mesma leitura do `kubectl rollout status`.
@@ -45,64 +39,16 @@ export function deploymentStatus(d: V1Deployment): { status: string; statusClass
   return { status: 'Degraded', statusClass: 'pending' }
 }
 
-/** V1LabelSelector -> "app=web,tier in (a,b),!legacy", como o kubectl aceita. */
-export function labelSelectorString(sel: V1LabelSelector | undefined): string {
-  if (!sel) return ''
-  const parts = Object.entries(sel.matchLabels ?? {}).map(([k, v]) => `${k}=${v}`)
-  for (const e of sel.matchExpressions ?? []) {
-    const values = (e.values ?? []).join(',')
-    switch (e.operator) {
-      case 'In':
-        parts.push(`${e.key} in (${values})`)
-        break
-      case 'NotIn':
-        parts.push(`${e.key} notin (${values})`)
-        break
-      case 'Exists':
-        parts.push(e.key)
-        break
-      case 'DoesNotExist':
-        parts.push(`!${e.key}`)
-        break
-    }
-  }
-  return parts.join(',')
-}
-
 export function toDeploymentRow(d: V1Deployment): DeploymentRow {
-  const { status, statusClass } = deploymentStatus(d)
-  const containers = d.spec?.template?.spec?.containers ?? []
   return {
-    uid: d.metadata?.uid ?? '',
-    name: d.metadata?.name ?? '',
-    namespace: d.metadata?.namespace ?? '',
-    status,
-    statusClass,
+    ...workloadBase(d, d.spec?.template, d.spec?.selector, d.status?.conditions, deploymentStatus(d)),
     desired: d.spec?.replicas ?? 1,
     ready: d.status?.readyReplicas ?? 0,
     upToDate: d.status?.updatedReplicas ?? 0,
     available: d.status?.availableReplicas ?? 0,
-    created: millis(d.metadata?.creationTimestamp),
-    images: containers.map((c) => c.image ?? ''),
     strategy: d.spec?.strategy?.type ?? 'RollingUpdate',
     paused: d.spec?.paused ?? false,
     revision: d.metadata?.annotations?.['deployment.kubernetes.io/revision'] ?? '',
-    selector: labelSelectorString(d.spec?.selector),
-    labels: d.metadata?.labels ?? {},
-    conditions: (d.status?.conditions ?? []).map((c) => ({
-      type: c.type,
-      status: c.status,
-      reason: c.reason ?? '',
-      message: c.message ?? '',
-      lastTransition: millis(c.lastTransitionTime),
-    })),
-    containers: containers.map((c) => ({
-      name: c.name,
-      image: c.image ?? '',
-      ports: (c.ports ?? []).map((p) => `${p.name ? `${p.name}:` : ''}${p.containerPort}/${p.protocol ?? 'TCP'}`),
-      requests: (c.resources?.requests ?? {}) as Record<string, string>,
-      limits: (c.resources?.limits ?? {}) as Record<string, string>,
-    })),
   }
 }
 
@@ -127,34 +73,13 @@ export function watchDeployments(
   })
 }
 
-export async function scaleDeployment(kc: KubeConfig, namespace: string, name: string, replicas: number): Promise<void> {
-  if (!Number.isInteger(replicas) || replicas < 0) throw new Error(`Número de réplicas inválido: ${replicas}`)
-  try {
-    await kc
-      .makeApiClient(AppsV1Api)
-      .patchNamespacedDeploymentScale(
-        { name, namespace, body: { spec: { replicas } } },
-        setHeaderOptions('Content-Type', PatchStrategy.MergePatch),
-      )
-  } catch (err) {
-    throw new Error(`Erro ao escalar ${name}: ${errorMessage(err)}`)
-  }
-}
-
-/** Mesmo efeito de `kubectl rollout restart`: muda uma anotação do template. */
-export async function restartDeployment(kc: KubeConfig, namespace: string, name: string): Promise<void> {
-  const api = kc.makeApiClient(AppsV1Api)
-  try {
-    // Como o kubectl: num deployment pausado a anotação mudaria sem efeito nenhum
-    const current = await api.readNamespacedDeployment({ name, namespace })
-    if (current.spec?.paused) throw new Error('o deployment está pausado; retome o rollout antes de reiniciar')
-
-    const restartedAt = new Date().toISOString()
-    await api.patchNamespacedDeployment(
-      { name, namespace, body: { spec: { template: { metadata: { annotations: { 'kubectl.kubernetes.io/restartedAt': restartedAt } } } } } },
-      setHeaderOptions('Content-Type', PatchStrategy.StrategicMergePatch),
-    )
-  } catch (err) {
-    throw new Error(`Erro ao reiniciar ${name}: ${errorMessage(err)}`)
-  }
+/**
+ * Template a restaurar num rollback: o do ReplicaSet da revisão, sem o label
+ * pod-template-hash, que o controller põe sozinho (igual ao kubectl).
+ */
+export function rollbackTemplate(rs: V1ReplicaSet): V1PodTemplateSpec {
+  const template = structuredClone(rs.spec?.template)
+  if (!template) throw new Error(`o ReplicaSet ${rs.metadata?.name ?? ''} não tem template`)
+  if (template.metadata?.labels) delete template.metadata.labels['pod-template-hash']
+  return template
 }
