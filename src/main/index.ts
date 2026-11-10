@@ -23,7 +23,11 @@ function createWindow(): void {
     },
   })
 
-  win.once('ready-to-show', () => win.show())
+  // Abre maximizada; o tamanho acima vale quando o usuário restaura a janela
+  win.once('ready-to-show', () => {
+    win.maximize()
+    win.show()
+  })
 
   // Links externos abrem no navegador, nunca dentro do app
   win.webContents.setWindowOpenHandler(({ url }) => {

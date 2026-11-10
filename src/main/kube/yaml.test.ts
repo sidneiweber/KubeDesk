@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toYaml } from './yaml'
+import { parseEdited, toYaml } from './yaml'
 
 const obj = {
   apiVersion: 'v1',
@@ -38,5 +38,33 @@ describe('toYaml', () => {
   it('não quebra strings longas', () => {
     const line = toYaml(obj).split('\n').find((l) => l.includes('last-applied'))
     expect(line).toContain('não deve quebrar em várias linhas no meio do valor')
+  })
+})
+
+describe('parseEdited', () => {
+  const ok = 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: prod\nspec:\n  replicas: 2\n'
+
+  it('devolve o objeto quando nome e namespace batem', () => {
+    expect(parseEdited(ok, 'prod', 'web')).toMatchObject({ kind: 'Deployment', spec: { replicas: 2 } })
+  })
+
+  it('recusa YAML quebrado com mensagem curta', () => {
+    expect(() => parseEdited('spec: [', 'prod', 'web')).toThrow(/^YAML inválido: [^\n]+$/)
+  })
+
+  it('recusa renomear', () => {
+    expect(() => parseEdited(ok.replace('name: web', 'name: api'), 'prod', 'web')).toThrow('metadata.name precisa continuar "web"')
+  })
+
+  it('recusa trocar de namespace', () => {
+    expect(() => parseEdited(ok.replace('namespace: prod', 'namespace: dev'), 'prod', 'web')).toThrow(/namespace/)
+  })
+
+  it('aceita namespace omitido', () => {
+    expect(() => parseEdited(ok.replace('  namespace: prod\n', ''), 'prod', 'web')).not.toThrow()
+  })
+
+  it('recusa lista ou texto solto', () => {
+    expect(() => parseEdited('- a\n- b\n', 'prod', 'web')).toThrow('O YAML precisa ser um objeto')
   })
 })

@@ -1,21 +1,9 @@
 import type { KubeConfig } from '@kubernetes/client-node'
-import { dump } from 'js-yaml'
+import { dump, load } from 'js-yaml'
 import type { WatchKind } from '@shared/api'
 import { errorMessage } from './errors'
-import { apiGet } from './http'
-import { resourcePath } from './watch'
-
-// Onde cada recurso mora na API. Namespaces são do cluster, não de um namespace.
-const LOCATION: Record<WatchKind, { prefix: string; resource: string; namespaced: boolean }> = {
-  pods: { prefix: '/api/v1', resource: 'pods', namespaced: true },
-  deployments: { prefix: '/apis/apps/v1', resource: 'deployments', namespaced: true },
-  namespaces: { prefix: '/api/v1', resource: 'namespaces', namespaced: false },
-  services: { prefix: '/api/v1', resource: 'services', namespaced: true },
-  ingresses: { prefix: '/apis/networking.k8s.io/v1', resource: 'ingresses', namespaced: true },
-  endpointslices: { prefix: '/apis/discovery.k8s.io/v1', resource: 'endpointslices', namespaced: true },
-  poddetails: { prefix: '/api/v1', resource: 'pods', namespaced: true },
-  events: { prefix: '/api/v1', resource: 'events', namespaced: true },
-}
+import { apiGet, apiPut } from './http'
+import { objectPath } from './resources'
 
 /**
  * Objeto da API em YAML, no formato do `kubectl get -o yaml`: chaves em
@@ -45,13 +33,43 @@ export async function resourceYaml(
   name: string,
   managedFields: boolean,
 ): Promise<string> {
-  const loc = LOCATION[kind]
-  if (!loc) throw new Error(`Recurso desconhecido: ${kind}`)
-  const base = resourcePath(loc.prefix, loc.resource, loc.namespaced ? namespace : '')
+  const path = objectPath(kind, namespace, name)
   try {
-    const res = await apiGet(kc, `${base}/${encodeURIComponent(name)}`)
+    const res = await apiGet(kc, path)
     return toYaml((await res.json()) as Record<string, unknown>, managedFields)
   } catch (err) {
     throw new Error(`Erro ao buscar o YAML de ${name}: ${errorMessage(err)}`)
+  }
+}
+
+/**
+ * Lê o YAML editado e confere que ainda é o mesmo objeto. Renomear ou trocar
+ * de namespace no editor não é suportado pela API (seria outro recurso), então
+ * vira erro claro em vez de um 400 confuso.
+ */
+export function parseEdited(text: string, namespace: string, name: string): Record<string, unknown> {
+  let obj: unknown
+  try {
+    obj = load(text)
+  } catch (err) {
+    throw new Error(`YAML inválido: ${(err as Error).message.split('\n')[0]}`)
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('O YAML precisa ser um objeto')
+  const meta = (obj as { metadata?: { name?: unknown; namespace?: unknown } }).metadata
+  if (!meta || meta.name !== name) throw new Error(`metadata.name precisa continuar "${name}"`)
+  if (namespace && (meta.namespace ?? namespace) !== namespace) throw new Error(`metadata.namespace precisa continuar "${namespace}"`)
+  return obj as Record<string, unknown>
+}
+
+export async function applyYaml(kc: KubeConfig, kind: WatchKind, namespace: string, name: string, text: string): Promise<void> {
+  const obj = parseEdited(text, namespace, name)
+  const path = objectPath(kind, namespace, name)
+  try {
+    await apiPut(kc, path, obj)
+  } catch (err) {
+    if ((err as { code?: number }).code === 409) {
+      throw new Error('O recurso mudou no cluster depois que o YAML foi lido. Recarregue e refaça a edição.')
+    }
+    throw new Error(`Erro ao aplicar ${name}: ${errorMessage(err)}`)
   }
 }

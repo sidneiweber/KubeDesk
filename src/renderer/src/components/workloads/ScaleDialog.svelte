@@ -1,9 +1,14 @@
 <script lang="ts">
-  import type { DeploymentRow } from '@shared/api'
+  import type { ScalableKind } from '@shared/api'
   import { toasts } from '../../lib/toasts.svelte'
   import Modal from '../Modal.svelte'
 
-  let { deployment, onclose }: { deployment: DeploymentRow; onclose: () => void } = $props()
+  let { kind, deployment, onclose }: {
+    kind: ScalableKind
+    /** O workload (Deployment, ReplicaSet ou StatefulSet). */
+    deployment: { namespace: string; name: string; desired: number; owner: { kind: string; name: string } | null }
+    onclose: () => void
+  } = $props()
 
   // svelte-ignore state_referenced_locally
   let replicas = $state(deployment.desired)
@@ -21,7 +26,7 @@
     // O deployment é ao vivo: depois do await o watch já pode ter trazido o valor novo
     const from = deployment.desired
     try {
-      await window.kube.scaleDeployment(deployment.namespace, deployment.name, replicas)
+      await window.kube.scale(kind, deployment.namespace, deployment.name, replicas)
       toasts.success(`${deployment.name}: ${from} → ${replicas} réplica${replicas === 1 ? '' : 's'}`)
       onclose()
     } catch (err) {
@@ -40,6 +45,9 @@
       <!-- svelte-ignore a11y_autofocus -->
       <input type="number" min="0" step="1" bind:value={replicas} autofocus />
     </label>
+    {#if deployment.owner}
+      <p class="warn">Este recurso é controlado por {deployment.owner.kind}/{deployment.owner.name}, que deve desfazer a mudança. Escale o {deployment.owner.kind}.</p>
+    {/if}
     {#if valid && replicas === 0 && deployment.desired > 0}
       <p class="warn">Com 0 réplicas todos os pods são removidos e o serviço fica fora do ar.</p>
     {/if}

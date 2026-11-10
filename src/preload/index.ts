@@ -73,12 +73,16 @@ const api: KubeApi = {
       onEnd,
     ),
 
-  scaleDeployment: (namespace, name, replicas) => withCleanError(invoke('deployment:scale', namespace, name, replicas)),
-  restartDeployment: (namespace, name) => withCleanError(invoke('deployment:restart', namespace, name)),
+  scale: (kind, namespace, name, replicas) => withCleanError(invoke('workload:scale', kind, namespace, name, replicas)),
+  restart: (kind, namespace, name) => withCleanError(invoke('workload:restart', kind, namespace, name)),
+  rollback: (kind, namespace, name, revision) => withCleanError(invoke('workload:rollback', kind, namespace, name, revision)),
+  suspendCronJob: (namespace, name, suspend) => withCleanError(invoke('cronjob:suspend', namespace, name, suspend)),
+  triggerCronJob: (namespace, name) => withCleanError(invoke('cronjob:trigger', namespace, name)),
 
   deletePod: (namespace, name) => withCleanError(invoke('pod:delete', namespace, name)),
   getYaml: (kind, namespace, name, managedFields = false) =>
     withCleanError(invoke('resource:yaml', kind, namespace, name, managedFields)),
+  applyYaml: (kind, namespace, name, yaml) => withCleanError(invoke('resource:apply', kind, namespace, name, yaml)),
   saveFile: (defaultName, content) => withCleanError(invoke('file:save', defaultName, content)),
 
   getPref: (key) => invoke('prefs:get', key),

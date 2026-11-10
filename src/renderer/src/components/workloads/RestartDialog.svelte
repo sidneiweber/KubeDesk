@@ -1,9 +1,14 @@
 <script lang="ts">
-  import type { DeploymentRow } from '@shared/api'
+  import type { RolloutKind } from '@shared/api'
   import { toasts } from '../../lib/toasts.svelte'
   import Modal from '../Modal.svelte'
 
-  let { deployment, onclose }: { deployment: DeploymentRow; onclose: () => void } = $props()
+  let { kind, deployment, onclose }: {
+    kind: RolloutKind
+    /** O workload (Deployment, DaemonSet ou StatefulSet). */
+    deployment: { namespace: string; name: string; strategy: string }
+    onclose: () => void
+  } = $props()
 
   let saving = $state(false)
   let error = $state('')
@@ -12,7 +17,7 @@
     saving = true
     error = ''
     try {
-      await window.kube.restartDeployment(deployment.namespace, deployment.name)
+      await window.kube.restart(kind, deployment.namespace, deployment.name)
       toasts.success(`${deployment.name}: rollout de reinício iniciado`)
       onclose()
     } catch (err) {
@@ -24,12 +29,14 @@
 </script>
 
 <Modal title="Reiniciar {deployment.name}?" {onclose}>
-  <p>Todos os pods do deployment serão recriados, como num <code>kubectl rollout restart</code>.</p>
+  <p>Todos os pods serão recriados, como num <code>kubectl rollout restart</code>.</p>
   <!-- O impacto depende da estratégia: com Recreate o serviço cai até os pods novos subirem -->
   {#if deployment.strategy === 'Recreate'}
     <p class="warn">A estratégia é <strong>Recreate</strong>: todos os pods param antes dos novos subirem, e o serviço fica fora do ar nesse intervalo.</p>
+  {:else if deployment.strategy === 'OnDelete'}
+    <p class="warn">A estratégia é <strong>OnDelete</strong>: o template muda, mas os pods só são recriados quando forem apagados.</p>
   {:else}
-    <p class="muted">A estratégia é RollingUpdate: os pods são trocados aos poucos.</p>
+    <p class="muted">A estratégia é RollingUpdate: os pods são trocados aos poucos{kind === 'statefulsets' ? ', um por vez, do último para o primeiro' : ''}.</p>
   {/if}
   {#if error}<div class="error-box" role="alert">{error}</div>{/if}
 

@@ -4,7 +4,12 @@
   import ConnectScreen from './components/ConnectScreen.svelte'
   import Sidebar from './components/Sidebar.svelte'
   import PodsView from './components/pods/PodsView.svelte'
-  import DeploymentsView from './components/deployments/DeploymentsView.svelte'
+  import DeploymentsView from './components/workloads/DeploymentsView.svelte'
+  import ReplicaSetsView from './components/workloads/ReplicaSetsView.svelte'
+  import DaemonSetsView from './components/workloads/DaemonSetsView.svelte'
+  import StatefulSetsView from './components/workloads/StatefulSetsView.svelte'
+  import JobsView from './components/workloads/JobsView.svelte'
+  import CronJobsView from './components/workloads/CronJobsView.svelte'
   import NamespacesView from './components/namespaces/NamespacesView.svelte'
   import ServicesView from './components/services/ServicesView.svelte'
   import IngressesView from './components/ingresses/IngressesView.svelte'
@@ -33,6 +38,16 @@
           <PodsView />
         {:else if nav.section === 'deployments'}
           <DeploymentsView />
+        {:else if nav.section === 'replicasets'}
+          <ReplicaSetsView />
+        {:else if nav.section === 'daemonsets'}
+          <DaemonSetsView />
+        {:else if nav.section === 'statefulsets'}
+          <StatefulSetsView />
+        {:else if nav.section === 'jobs'}
+          <JobsView />
+        {:else if nav.section === 'cronjobs'}
+          <CronJobsView />
         {:else if nav.section === 'namespaces'}
           <NamespacesView />
         {:else if nav.section === 'services'}

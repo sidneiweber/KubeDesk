@@ -19,6 +19,11 @@
       items: [
         { id: 'pods', label: 'Pods' },
         { id: 'deployments', label: 'Deployments' },
+        { id: 'daemonsets', label: 'DaemonSets' },
+        { id: 'statefulsets', label: 'StatefulSets' },
+        { id: 'replicasets', label: 'ReplicaSets' },
+        { id: 'jobs', label: 'Jobs' },
+        { id: 'cronjobs', label: 'CronJobs' },
         { id: 'namespaces', label: 'Namespaces' },
       ],
     },

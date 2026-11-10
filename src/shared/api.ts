@@ -126,31 +126,121 @@ export interface ContainerSpec {
   limits: Record<string, string>
 }
 
+/** Quem controla o recurso, ex.: o Deployment de um ReplicaSet. */
+export interface OwnerRef {
+  kind: string
+  name: string
+  uid: string
+}
+
 /**
- * Linha da tabela de deployments. Leva também o que o painel de detalhes
+ * O que todo workload (Deployment, ReplicaSet, DaemonSet, StatefulSet, Job,
+ * CronJob) tem em comum. As linhas levam também o que a página de detalhes
  * mostra: são poucos objetos, e assim os detalhes ficam ao vivo de graça.
  */
-export interface DeploymentRow {
+export interface WorkloadBase {
   uid: string
   name: string
   namespace: string
   status: string
   statusClass: StatusClass
+  created: number
+  labels: Record<string, string>
+  annotations: Record<string, string>
+  /** Seletor de pods no formato de label selector ("app=web,tier in (a,b)"); vazio no CronJob. */
+  selector: string
+  images: string[]
+  containers: ContainerSpec[]
+  conditions: DeploymentCondition[]
+  owner: OwnerRef | null
+}
+
+export interface DeploymentRow extends WorkloadBase {
   desired: number
   ready: number
   upToDate: number
   available: number
-  created: number
-  images: string[]
   strategy: string
   paused: boolean
   revision: string
-  /** Seletor no formato de label selector ("app=web,tier in (a,b)"). */
-  selector: string
-  labels: Record<string, string>
-  conditions: DeploymentCondition[]
-  containers: ContainerSpec[]
 }
+
+/** ReplicaSet: cada um é também uma revisão do deployment dono. */
+export interface ReplicaSetRow extends WorkloadBase {
+  /** Anotação deployment.kubernetes.io/revision; 0 se ausente. */
+  revision: number
+  /** Anotação kubernetes.io/change-cause, quando alguém registrou o motivo. */
+  changeCause: string
+  desired: number
+  current: number
+  ready: number
+  available: number
+}
+
+export interface DaemonSetRow extends WorkloadBase {
+  /** Nodes que deveriam rodar o pod. */
+  desired: number
+  current: number
+  ready: number
+  upToDate: number
+  available: number
+  /** "chave=valor" do nodeSelector. */
+  nodeSelector: string[]
+  strategy: string
+}
+
+export interface StatefulSetRow extends WorkloadBase {
+  desired: number
+  current: number
+  ready: number
+  upToDate: number
+  available: number
+  serviceName: string
+  strategy: string
+  podManagementPolicy: string
+  /** Nomes dos volumeClaimTemplates. */
+  volumeClaims: string[]
+}
+
+export interface JobRow extends WorkloadBase {
+  /** null = sem número fixo (fila de trabalho). */
+  completions: number | null
+  parallelism: number
+  active: number
+  succeeded: number
+  failed: number
+  backoffLimit: number
+  suspended: boolean
+  startTime: number
+  completionTime: number
+}
+
+export interface CronJobRow extends WorkloadBase {
+  schedule: string
+  timeZone: string
+  suspended: boolean
+  concurrencyPolicy: string
+  /** Jobs rodando agora. */
+  active: number
+  lastSchedule: number
+  lastSuccessful: number
+  successfulJobsHistoryLimit: number
+  failedJobsHistoryLimit: number
+}
+
+/** Revisão guardada de um DaemonSet ou StatefulSet (ControllerRevision). */
+export interface ControllerRevisionRow {
+  uid: string
+  name: string
+  namespace: string
+  ownerUid: string
+  revision: number
+  images: string[]
+  created: number
+}
+
+/** Workloads com página de detalhe em abas. */
+export type WorkloadKind = 'deployments' | 'replicasets' | 'daemonsets' | 'statefulsets' | 'jobs' | 'cronjobs'
 
 export interface NamespaceRow {
   uid: string
@@ -245,6 +335,12 @@ export interface WatchRows {
   /** Um pod só, com tudo para a página de detalhe (fieldSelector metadata.name). */
   poddetails: PodDetail
   events: EventRow
+  replicasets: ReplicaSetRow
+  daemonsets: DaemonSetRow
+  statefulsets: StatefulSetRow
+  jobs: JobRow
+  cronjobs: CronJobRow
+  controllerrevisions: ControllerRevisionRow
 }
 export type WatchKind = keyof WatchRows
 
@@ -266,6 +362,9 @@ export interface LogOptions {
   follow: boolean
 }
 
+export type ScalableKind = 'deployments' | 'replicasets' | 'statefulsets'
+export type RolloutKind = 'deployments' | 'daemonsets' | 'statefulsets'
+
 /** Função que encerra uma assinatura (watch ou stream). */
 export type Unsubscribe = () => void
 
@@ -286,13 +385,25 @@ export interface KubeApi {
   /** Uso de CPU/memória dos pods, lido periodicamente (metrics.k8s.io não tem watch). */
   watchPodMetrics(namespace: string, onUpdate: (u: MetricsUpdate) => void): Unsubscribe
   streamLogs(opts: LogOptions, onLines: (lines: string[]) => void, onEnd: (error: string | null) => void): Unsubscribe
-  scaleDeployment(namespace: string, name: string, replicas: number): Promise<void>
+  /** Muda o número de réplicas (Deployment, ReplicaSet, StatefulSet). */
+  scale(kind: ScalableKind, namespace: string, name: string, replicas: number): Promise<void>
   /** Equivale a `kubectl rollout restart`. */
-  restartDeployment(namespace: string, name: string): Promise<void>
+  restart(kind: RolloutKind, namespace: string, name: string): Promise<void>
+  /** Equivale a `kubectl rollout undo --to-revision`. */
+  rollback(kind: RolloutKind, namespace: string, name: string, revision: number): Promise<void>
+  /** Pausa ou retoma um CronJob. */
+  suspendCronJob(namespace: string, name: string, suspend: boolean): Promise<void>
+  /** Cria um Job agora a partir do CronJob, como `kubectl create job --from=cronjob/x`. Devolve o nome. */
+  triggerCronJob(namespace: string, name: string): Promise<string>
   /** Apaga o pod; o controlador dele (se houver) cria outro. */
   deletePod(namespace: string, name: string): Promise<void>
   /** Objeto como o `kubectl get -o yaml`. managedFields omitido por padrão. */
   getYaml(kind: WatchKind, namespace: string, name: string, managedFields?: boolean): Promise<string>
+  /**
+   * Grava o YAML editado (PUT, como o `kubectl edit`). O resourceVersion do
+   * texto garante que ninguém mudou o recurso no meio: se mudou, dá conflito.
+   */
+  applyYaml(kind: WatchKind, namespace: string, name: string, yaml: string): Promise<void>
   /** Abre "Salvar como". Devolve o caminho gravado, ou null se cancelou. */
   saveFile(defaultName: string, content: string): Promise<string | null>
   /** Preferências do usuário, gravadas em disco pelo main. */
@@ -311,10 +422,14 @@ export interface Invoke {
   'logs:start': { args: [id: string, opts: LogOptions]; result: void }
   'metrics:start': { args: [id: string, namespace: string]; result: void }
   'sub:stop': { args: [id: string]; result: void }
-  'deployment:scale': { args: [namespace: string, name: string, replicas: number]; result: void }
-  'deployment:restart': { args: [namespace: string, name: string]; result: void }
+  'workload:scale': { args: [kind: ScalableKind, namespace: string, name: string, replicas: number]; result: void }
+  'workload:restart': { args: [kind: RolloutKind, namespace: string, name: string]; result: void }
+  'workload:rollback': { args: [kind: RolloutKind, namespace: string, name: string, revision: number]; result: void }
+  'cronjob:suspend': { args: [namespace: string, name: string, suspend: boolean]; result: void }
+  'cronjob:trigger': { args: [namespace: string, name: string]; result: string }
   'pod:delete': { args: [namespace: string, name: string]; result: void }
   'resource:yaml': { args: [kind: WatchKind, namespace: string, name: string, managedFields: boolean]; result: string }
+  'resource:apply': { args: [kind: WatchKind, namespace: string, name: string, yaml: string]; result: void }
   'file:save': { args: [defaultName: string, content: string]; result: string | null }
   'prefs:get': { args: [key: string]; result: unknown }
   'prefs:set': { args: [key: string, value: unknown]; result: void }
