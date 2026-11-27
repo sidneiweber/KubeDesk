@@ -3,6 +3,7 @@ import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type Open
 import type { KubeConfig } from '@kubernetes/client-node'
 import type { Batch, Events, Invoke, KubeconfigInfo, WatchKind, WatchOptions, WatchRows } from '@shared/api'
 import { connect, listContexts, loadKubeconfig } from './kube/connection'
+import { secretValues, watchConfigMaps, watchHpas, watchSecrets } from './kube/configuration'
 import { watchDeployments } from './kube/deployments'
 import { watchEndpointSlices } from './kube/endpointSlices'
 import { watchIngresses } from './kube/ingresses'
@@ -23,6 +24,7 @@ import {
   watchStatefulSets,
 } from './kube/workloads'
 import { applyYaml, resourceYaml } from './kube/yaml'
+import { watchCsiDrivers, watchCsiNodes, watchPvcs, watchPvs, watchStorageClasses, watchVolumeAttachments } from './kube/storage'
 import { PrefsStore } from './prefs'
 
 // Estado da sessão. Uma janela só, então um cluster ativo por vez.
@@ -64,6 +66,15 @@ const watchers: { [K in WatchKind]: Watcher<K> } = {
   jobs: watchJobs,
   cronjobs: watchCronJobs,
   controllerrevisions: watchControllerRevisions,
+  configmaps: watchConfigMaps,
+  secrets: watchSecrets,
+  hpas: watchHpas,
+  pvs: watchPvs,
+  pvcs: watchPvcs,
+  volumeattachments: watchVolumeAttachments,
+  storageclasses: watchStorageClasses,
+  csidrivers: watchCsiDrivers,
+  csinodes: watchCsiNodes,
 }
 
 function requireCluster(): KubeConfig {
@@ -164,6 +175,7 @@ export function registerIpc(): void {
   handle('cronjob:suspend', (_, namespace, name, suspend) => suspendCronJob(requireCluster(), namespace, name, suspend))
   handle('cronjob:trigger', (_, namespace, name) => triggerCronJob(requireCluster(), namespace, name))
 
+  handle('secret:reveal', (_, namespace, name) => secretValues(requireCluster(), namespace, name))
   handle('pod:delete', (_, namespace, name) => deletePod(requireCluster(), namespace, name))
 
   handle('resource:yaml', (_, kind, namespace, name, managedFields) =>

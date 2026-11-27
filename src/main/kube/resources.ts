@@ -17,6 +17,15 @@ const LOCATION: Record<WatchKind, { prefix: string; resource: string; namespaced
   controllerrevisions: { prefix: '/apis/apps/v1', resource: 'controllerrevisions', namespaced: true },
   jobs: { prefix: '/apis/batch/v1', resource: 'jobs', namespaced: true },
   cronjobs: { prefix: '/apis/batch/v1', resource: 'cronjobs', namespaced: true },
+  configmaps: { prefix: '/api/v1', resource: 'configmaps', namespaced: true },
+  secrets: { prefix: '/api/v1', resource: 'secrets', namespaced: true },
+  hpas: { prefix: '/apis/autoscaling/v2', resource: 'horizontalpodautoscalers', namespaced: true },
+  pvs: { prefix: '/api/v1', resource: 'persistentvolumes', namespaced: false },
+  pvcs: { prefix: '/api/v1', resource: 'persistentvolumeclaims', namespaced: true },
+  volumeattachments: { prefix: '/apis/storage.k8s.io/v1', resource: 'volumeattachments', namespaced: false },
+  storageclasses: { prefix: '/apis/storage.k8s.io/v1', resource: 'storageclasses', namespaced: false },
+  csidrivers: { prefix: '/apis/storage.k8s.io/v1', resource: 'csidrivers', namespaced: false },
+  csinodes: { prefix: '/apis/storage.k8s.io/v1', resource: 'csinodes', namespaced: false },
 }
 
 /** Caminho da coleção, ex.: /apis/apps/v1/namespaces/prod/statefulsets */

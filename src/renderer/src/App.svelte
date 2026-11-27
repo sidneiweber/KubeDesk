@@ -3,6 +3,7 @@
   import { nav } from './lib/nav.svelte'
   import ConnectScreen from './components/ConnectScreen.svelte'
   import Sidebar from './components/Sidebar.svelte'
+  import OverviewView from './components/overview/OverviewView.svelte'
   import PodsView from './components/pods/PodsView.svelte'
   import DeploymentsView from './components/workloads/DeploymentsView.svelte'
   import ReplicaSetsView from './components/workloads/ReplicaSetsView.svelte'
@@ -14,6 +15,15 @@
   import ServicesView from './components/services/ServicesView.svelte'
   import IngressesView from './components/ingresses/IngressesView.svelte'
   import EndpointsView from './components/endpoints/EndpointsView.svelte'
+  import ConfigMapsView from './components/configuration/ConfigMapsView.svelte'
+  import SecretsView from './components/configuration/SecretsView.svelte'
+  import HpasView from './components/configuration/HpasView.svelte'
+  import PvsView from './components/storage/PvsView.svelte'
+  import PvcsView from './components/storage/PvcsView.svelte'
+  import VolumeAttachmentsView from './components/storage/VolumeAttachmentsView.svelte'
+  import StorageClassesView from './components/storage/StorageClassesView.svelte'
+  import CsiDriversView from './components/storage/CsiDriversView.svelte'
+  import CsiNodesView from './components/storage/CsiNodesView.svelte'
   import Toasts from './components/Toasts.svelte'
   import YamlViewer from './components/YamlViewer.svelte'
   import { yamlView } from './lib/yaml.svelte'
@@ -34,7 +44,9 @@
       <!-- Recria a tela ao trocar de contexto (para não sobrar estado do cluster
            anterior) e a cada clique no menu (para voltar à lista) -->
       {#key `${session.context}:${nav.visit}`}
-        {#if nav.section === 'pods'}
+        {#if nav.section === 'overview'}
+          <OverviewView />
+        {:else if nav.section === 'pods'}
           <PodsView />
         {:else if nav.section === 'deployments'}
           <DeploymentsView />
@@ -56,6 +68,24 @@
           <IngressesView />
         {:else if nav.section === 'endpoints'}
           <EndpointsView />
+        {:else if nav.section === 'configmaps'}
+          <ConfigMapsView />
+        {:else if nav.section === 'secrets'}
+          <SecretsView />
+        {:else if nav.section === 'hpas'}
+          <HpasView />
+        {:else if nav.section === 'pvs'}
+          <PvsView />
+        {:else if nav.section === 'pvcs'}
+          <PvcsView />
+        {:else if nav.section === 'volumeattachments'}
+          <VolumeAttachmentsView />
+        {:else if nav.section === 'storageclasses'}
+          <StorageClassesView />
+        {:else if nav.section === 'csidrivers'}
+          <CsiDriversView />
+        {:else if nav.section === 'csinodes'}
+          <CsiNodesView />
         {/if}
       {/key}
     </main>

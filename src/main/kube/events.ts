@@ -13,6 +13,7 @@ export function toEventRow(e: CoreV1Event): EventRow {
   const last = millis(e.series?.lastObservedTime) || millis(e.lastTimestamp) || millis(e.eventTime) || millis(e.metadata?.creationTimestamp)
   return {
     uid: e.metadata?.uid ?? '',
+    namespace: e.involvedObject.namespace ?? e.metadata?.namespace ?? '',
     type: e.type ?? 'Normal',
     reason: e.reason ?? '',
     message: e.message ?? '',

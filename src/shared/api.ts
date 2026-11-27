@@ -87,6 +87,7 @@ export interface PodDetail extends PodRow {
 
 export interface EventRow {
   uid: string
+  namespace: string
   /** "Normal" ou "Warning". */
   type: string
   reason: string
@@ -97,6 +98,7 @@ export interface EventRow {
   first: number
   /** Componente que reportou, ex.: "kubelet", "default-scheduler". */
   source: string
+  /** "Kind/nome" do objeto envolvido. */
   object: string
 }
 
@@ -316,6 +318,180 @@ export interface EndpointSliceRow {
   created: number
 }
 
+export interface ConfigMapRow {
+  uid: string
+  name: string
+  namespace: string
+  /** data e binaryData juntos, por chave. value null = binário (só o tamanho). */
+  entries: { key: string; value: string | null; size: number }[]
+  immutable: boolean
+  created: number
+  labels: Record<string, string>
+}
+
+/**
+ * Secret sem os valores: eles só vêm com revealSecret, a pedido. Sem
+ * annotations também: a last-applied-configuration do kubectl traz os dados.
+ */
+export interface SecretRow {
+  uid: string
+  name: string
+  namespace: string
+  /** Opaque, kubernetes.io/tls, kubernetes.io/dockerconfigjson… */
+  type: string
+  /** size = bytes já decodificados. */
+  keys: { key: string; size: number }[]
+  immutable: boolean
+  created: number
+  labels: Record<string, string>
+}
+
+export interface HpaMetric {
+  /** Resource, ContainerResource, Pods, Object, External. */
+  type: string
+  /** "cpu", "memory (app)", "requests_per_second"… */
+  name: string
+  /** "45%", "200Mi" ou "<unknown>" enquanto não há leitura. */
+  current: string
+  target: string
+}
+
+export interface HpaRow {
+  uid: string
+  name: string
+  namespace: string
+  status: string
+  statusClass: StatusClass
+  /** scaleTargetRef: o que o HPA escala, ex.: Deployment/web. */
+  target: { kind: string; name: string }
+  minReplicas: number
+  maxReplicas: number
+  currentReplicas: number
+  desiredReplicas: number
+  metrics: HpaMetric[]
+  /** Última vez que mudou o número de réplicas (epoch ms); 0 = nunca. */
+  lastScale: number
+  conditions: DeploymentCondition[]
+  created: number
+  labels: Record<string, string>
+}
+
+// ---- Storage ----
+// Recursos do cluster (PV, VolumeAttachment, StorageClass, CSIDriver, CSINode)
+// levam namespace "" para caber nas mesmas telas e chamadas dos demais.
+
+export interface PvRow {
+  uid: string
+  name: string
+  namespace: string
+  /** Fase (Available, Bound, Released, Failed) ou Terminating. */
+  status: string
+  statusClass: StatusClass
+  /** "10Gi"; capacityBytes para ordenar. */
+  capacity: string
+  capacityBytes: number | null
+  /** "RWO,ROX", como o kubectl. */
+  accessModes: string
+  reclaimPolicy: string
+  claim: { namespace: string; name: string } | null
+  storageClass: string
+  volumeMode: string
+  /** Tipo de origem (CSI, HostPath, NFS…) e o detalhe dela. */
+  kind: string
+  source: string
+  nodeAffinity: string
+  mountOptions: string[]
+  reason: string
+  message: string
+  created: number
+  labels: Record<string, string>
+}
+
+export interface PvcRow {
+  uid: string
+  name: string
+  namespace: string
+  /** Fase (Pending, Bound, Lost) ou Terminating. */
+  status: string
+  statusClass: StatusClass
+  volume: string
+  /** Capacidade real (status); vazio até ligar a um PV. */
+  capacity: string
+  capacityBytes: number | null
+  requested: string
+  accessModes: string
+  storageClass: string
+  volumeMode: string
+  selector: string
+  conditions: DeploymentCondition[]
+  created: number
+  labels: Record<string, string>
+}
+
+export interface VolumeAttachmentRow {
+  uid: string
+  name: string
+  namespace: string
+  status: string
+  statusClass: StatusClass
+  /** Driver CSI que anexa. */
+  attacher: string
+  pv: string
+  inline: boolean
+  node: string
+  attached: boolean
+  /** Erro de attach ou detach, se houver. */
+  error: string
+  metadata: Record<string, string>
+  created: number
+  labels: Record<string, string>
+}
+
+export interface StorageClassRow {
+  uid: string
+  name: string
+  namespace: string
+  provisioner: string
+  reclaimPolicy: string
+  volumeBindingMode: string
+  allowVolumeExpansion: boolean
+  isDefault: boolean
+  parameters: Record<string, string>
+  mountOptions: string[]
+  created: number
+  labels: Record<string, string>
+}
+
+export interface CsiDriverRow {
+  uid: string
+  name: string
+  namespace: string
+  attachRequired: boolean
+  podInfoOnMount: boolean
+  storageCapacity: boolean
+  /** Audiences dos tokens pedidos. */
+  tokenRequests: string[]
+  requiresRepublish: boolean
+  /** Persistent, Ephemeral. */
+  modes: string[]
+  fsGroupPolicy: string
+  seLinuxMount: boolean
+  created: number
+  labels: Record<string, string>
+}
+
+export interface CsiNodeRow {
+  uid: string
+  name: string
+  namespace: string
+  /** allocatable null = o driver não informa limite de volumes. */
+  drivers: { name: string; nodeID: string; topologyKeys: string[]; allocatable: number | null }[]
+  created: number
+  labels: Record<string, string>
+}
+
+export type StorageKind = 'pvs' | 'pvcs' | 'volumeattachments' | 'storageclasses' | 'csidrivers' | 'csinodes'
+
 /** Lote de mudanças de uma lista. reset=true: substitua tudo. */
 export interface Batch<R> {
   reset: boolean
@@ -341,6 +517,15 @@ export interface WatchRows {
   jobs: JobRow
   cronjobs: CronJobRow
   controllerrevisions: ControllerRevisionRow
+  configmaps: ConfigMapRow
+  secrets: SecretRow
+  hpas: HpaRow
+  pvs: PvRow
+  pvcs: PvcRow
+  volumeattachments: VolumeAttachmentRow
+  storageclasses: StorageClassRow
+  csidrivers: CsiDriverRow
+  csinodes: CsiNodeRow
 }
 export type WatchKind = keyof WatchRows
 
@@ -395,6 +580,8 @@ export interface KubeApi {
   suspendCronJob(namespace: string, name: string, suspend: boolean): Promise<void>
   /** Cria um Job agora a partir do CronJob, como `kubectl create job --from=cronjob/x`. Devolve o nome. */
   triggerCronJob(namespace: string, name: string): Promise<string>
+  /** Valores do secret, decodificados do base64. Lidos na hora, não ficam na lista. */
+  revealSecret(namespace: string, name: string): Promise<Record<string, string>>
   /** Apaga o pod; o controlador dele (se houver) cria outro. */
   deletePod(namespace: string, name: string): Promise<void>
   /** Objeto como o `kubectl get -o yaml`. managedFields omitido por padrão. */
@@ -427,6 +614,7 @@ export interface Invoke {
   'workload:rollback': { args: [kind: RolloutKind, namespace: string, name: string, revision: number]; result: void }
   'cronjob:suspend': { args: [namespace: string, name: string, suspend: boolean]; result: void }
   'cronjob:trigger': { args: [namespace: string, name: string]; result: string }
+  'secret:reveal': { args: [namespace: string, name: string]; result: Record<string, string> }
   'pod:delete': { args: [namespace: string, name: string]; result: void }
   'resource:yaml': { args: [kind: WatchKind, namespace: string, name: string, managedFields: boolean]; result: string }
   'resource:apply': { args: [kind: WatchKind, namespace: string, name: string, yaml: string]; result: void }

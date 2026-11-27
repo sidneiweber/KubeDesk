@@ -1,11 +1,12 @@
 import type { WorkloadKind } from '@shared/api'
 
-export type Section = 'pods' | WorkloadKind | 'namespaces' | 'services' | 'ingresses' | 'endpoints'
+export type Section = 'overview' | 'pods' | WorkloadKind | 'namespaces' | 'services' | 'ingresses' | 'endpoints' | 'configmaps' | 'secrets' | 'hpas'
+  | 'pvs' | 'pvcs' | 'volumeattachments' | 'storageclasses' | 'csidrivers' | 'csinodes'
 
 // Seção aberta. Fica fora do App para que uma tela possa levar a outra
 // (ex.: abrir um namespace leva aos pods dele).
 class Nav {
-  section = $state<Section>('pods')
+  section = $state<Section>('overview')
   /** Muda a cada entrada numa seção; o App recria a tela quando muda. */
   visit = $state(0)
   /** Recurso a abrir direto nos detalhes ao entrar na seção (lido uma vez pela tela). */
@@ -30,3 +31,25 @@ class Nav {
 }
 
 export const nav = new Nav()
+
+/**
+ * Abre os detalhes do alvo pendente assim que ele aparece na lista (ex.: o
+ * Deployment de um HPA). Chamar na inicialização do componente.
+ */
+export function followTarget<R extends { uid: string; namespace: string; name: string }>(
+  list: { rows: R[]; loading: boolean },
+  open: (uid: string) => void,
+): void {
+  let pending = $state(nav.takeTarget())
+  $effect(() => {
+    if (!pending) return
+    const t = pending
+    const found = list.rows.find((r) => r.namespace === t.namespace && r.name === t.name)
+    if (found) {
+      open(found.uid)
+      pending = null
+    } else if (!list.loading) {
+      pending = null
+    }
+  })
+}
