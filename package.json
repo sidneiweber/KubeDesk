@@ -1,6 +1,6 @@
 {
   "name": "kubedesk",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Ferramenta para gerenciar clusters Kubernetes",
   "main": "out/main/index.js",
   "type": "module",
