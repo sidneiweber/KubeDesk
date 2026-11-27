@@ -67,6 +67,41 @@ npm run dist:linux    # ou dist:win / dist:mac
 
 Os instaladores são criados em `dist/`. O `npm run build` só compila o app para `out/`.
 
+### Instalar o RPM
+
+O `.rpm` das releases é assinado. O rpm 6 (Fedora 43 em diante) recusa
+pacotes sem assinatura, então importe a chave pública uma vez:
+
+```bash
+sudo rpm --import https://github.com/sidneiweber/KubeDesk/releases/latest/download/RPM-GPG-KEY-kubedesk.asc
+sudo dnf install ./kubedesk-*.x86_64.rpm
+```
+
+O `.rpm` gerado localmente com `npm run dist:linux` não é assinado; para
+instalá-lo, use `sudo rpm -ivh --nosignature dist/kubedesk-*.rpm`.
+
+### Assinatura do RPM (mantenedores)
+
+O workflow Release assina o `.rpm` com `scripts/sign-rpm.sh` e anexa a chave
+pública (`RPM-GPG-KEY-kubedesk.asc`) à release. Sem o secret, o build de
+Linux falha. Para configurar, uma vez:
+
+```bash
+# Chave só para assinar releases, sem validade
+export GNUPGHOME=$(mktemp -d)
+gpg --quick-gen-key "KubeDesk Releases <seu-email>" rsa4096 sign never
+
+# Secrets do repositório (a passphrase é a que você digitou acima)
+gpg --armor --export-secret-keys | gh secret set RPM_GPG_PRIVATE_KEY
+gh secret set RPM_GPG_PASSPHRASE
+
+# Guarde uma cópia da chave privada fora do GitHub (gerenciador de senhas)
+# e depois apague o chaveiro temporário
+rm -rf "$GNUPGHOME"
+```
+
+Para testar a assinatura localmente: `RPM_GPG_PRIVATE_KEY="$(cat chave.asc)" scripts/sign-rpm.sh dist`.
+
 ## 📖 Como Usar
 
 1. **Primeira Execução**: A aplicação tentará carregar automaticamente seu arquivo kubeconfig padrão (`~/.kube/config`)

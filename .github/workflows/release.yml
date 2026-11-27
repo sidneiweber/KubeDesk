@@ -52,6 +52,17 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+    # O rpm 6 (Fedora 43+) recusa pacote sem assinatura. Falha se o secret
+    # não estiver configurado: melhor sem release do que um .rpm que não instala.
+    - name: Sign RPM
+      if: matrix.platform == 'linux'
+      run: |
+        command -v rpmsign >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rpm; }
+        scripts/sign-rpm.sh dist
+      env:
+        RPM_GPG_PRIVATE_KEY: ${{ secrets.RPM_GPG_PRIVATE_KEY }}
+        RPM_GPG_PASSPHRASE: ${{ secrets.RPM_GPG_PASSPHRASE }}
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -95,7 +106,8 @@ jobs:
         echo "### 🐧 Linux" >> release_notes.md
         echo "- **AppImage**: Executável portável universal" >> release_notes.md
         echo "- **DEB**: Pacote para Debian/Ubuntu" >> release_notes.md
-        echo "- **RPM**: Pacote para Red Hat/Fedora" >> release_notes.md
+        echo "- **RPM**: Pacote para Red Hat/Fedora, assinado. Importe a chave uma vez antes de instalar:" >> release_notes.md
+        echo '  `sudo rpm --import https://github.com/${{ github.repository }}/releases/latest/download/RPM-GPG-KEY-kubedesk.asc`' >> release_notes.md
         echo "" >> release_notes.md
         echo "### 🪟 Windows" >> release_notes.md
         echo "- **EXE**: Instalador NSIS" >> release_notes.md
@@ -123,6 +135,7 @@ jobs:
           artifacts/*/*.AppImage
           artifacts/*/*.deb
           artifacts/*/*.rpm
+          artifacts/*/RPM-GPG-KEY-kubedesk.asc
           artifacts/*/*.exe
           artifacts/*/*.dmg
           artifacts/*/*.zip
