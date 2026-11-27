@@ -79,6 +79,7 @@ const api: KubeApi = {
   suspendCronJob: (namespace, name, suspend) => withCleanError(invoke('cronjob:suspend', namespace, name, suspend)),
   triggerCronJob: (namespace, name) => withCleanError(invoke('cronjob:trigger', namespace, name)),
 
+  revealSecret: (namespace, name) => withCleanError(invoke('secret:reveal', namespace, name)),
   deletePod: (namespace, name) => withCleanError(invoke('pod:delete', namespace, name)),
   getYaml: (kind, namespace, name, managedFields = false) =>
     withCleanError(invoke('resource:yaml', kind, namespace, name, managedFields)),

@@ -8,6 +8,7 @@
   import { PodMetrics } from '../../lib/podMetrics.svelte'
   import { formatCpu, formatMemory } from '../../lib/usage'
   import { openYaml } from '../../lib/yaml.svelte'
+  import { nav, type Section as NavSection } from '../../lib/nav.svelte'
   import StatusPill from '../table/StatusPill.svelte'
   import UsageCell from '../table/UsageCell.svelte'
   import DetailPage from '../detail/DetailPage.svelte'
@@ -153,7 +154,15 @@
           <thead><tr><th>Nome</th><th>Tipo</th><th>Origem</th></tr></thead>
           <tbody>
             {#each pod.volumes as v (v.name)}
-              <tr><td>{v.name}</td><td>{v.kind}</td><td class="mono">{v.source || '-'}</td></tr>
+              {@const to: NavSection | null = v.kind === 'ConfigMap' ? 'configmaps' : v.kind === 'Secret' ? 'secrets' : v.kind === 'PersistentVolumeClaim' ? 'pvcs' : null}
+              <tr>
+                <td>{v.name}</td><td>{v.kind}</td>
+                <td class="mono">
+                  {#if to && v.source}
+                    <button class="link" onclick={() => nav.go(to, { namespace: pod.namespace, name: v.source })}>{v.source}</button>
+                  {:else}{v.source || '-'}{/if}
+                </td>
+              </tr>
             {/each}
           </tbody>
         </table>
@@ -210,4 +219,7 @@
   .clamp { max-height: 6em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   .logs { height: 420px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .logs > :global(section) { flex: 1; border-top: 0; }
+  .link { all: unset; cursor: pointer; color: var(--accent); }
+  .link:hover { text-decoration: underline; }
+  .link:focus-visible { outline: 2px solid var(--focus); }
 </style>

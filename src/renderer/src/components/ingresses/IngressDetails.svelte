@@ -7,6 +7,7 @@
   import Labels from '../detail/Labels.svelte'
   import Section from '../detail/Section.svelte'
   import { openYaml } from '../../lib/yaml.svelte'
+  import { nav } from '../../lib/nav.svelte'
 
   let { ingress, loading, onback }: {
     ingress: IngressRow | undefined
@@ -48,7 +49,7 @@
           <thead><tr><th>Secret</th><th>Hosts</th></tr></thead>
           <tbody>
             {#each ingress.tls as t, i (i)}
-              <tr><td>{t.secretName || '-'}</td><td>{t.hosts.join(', ') || '-'}</td></tr>
+              <tr><td>{#if t.secretName}<button class="link" onclick={() => nav.go('secrets', { namespace: ingress.namespace, name: t.secretName })}>{t.secretName}</button>{:else}-{/if}</td><td>{t.hosts.join(', ') || '-'}</td></tr>
             {/each}
           </tbody>
         </table>
@@ -61,4 +62,7 @@
 
 <style>
   .muted { color: var(--muted); }
+  .link { all: unset; cursor: pointer; color: var(--accent); }
+  .link:hover { text-decoration: underline; }
+  .link:focus-visible { outline: 2px solid var(--focus); }
 </style>

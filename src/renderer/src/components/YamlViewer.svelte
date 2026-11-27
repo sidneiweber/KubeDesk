@@ -15,6 +15,9 @@
     poddetails: 'Pod', events: 'Event', replicasets: 'ReplicaSet',
     daemonsets: 'DaemonSet', statefulsets: 'StatefulSet', jobs: 'Job', cronjobs: 'CronJob',
     controllerrevisions: 'ControllerRevision',
+    configmaps: 'ConfigMap', secrets: 'Secret', hpas: 'HorizontalPodAutoscaler',
+    pvs: 'PersistentVolume', pvcs: 'PersistentVolumeClaim', volumeattachments: 'VolumeAttachment',
+    storageclasses: 'StorageClass', csidrivers: 'CSIDriver', csinodes: 'CSINode',
   }
 
   let dialog: HTMLDialogElement
